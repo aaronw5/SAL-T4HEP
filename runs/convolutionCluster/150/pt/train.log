@@ -1,0 +1,27 @@
+2025-04-20 00:43:09,849 INFO Starting training with args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/convolutionCluster', cluster_E=True, cluster_F=True, batch_size=4096, num_epochs=1000, d_model=16, d_ff=16, output_dim=16, num_heads=4, proj_dim=16, val_split=0.2, num_particles=150, sort_by='pt', convolution=True)
+2025-04-20 00:43:25,413 INFO Loaded x shape (620000, 150, 3), y shape (620000, 5)
+2025-04-20 00:43:37,788 INFO Split into train (496000, 150, 3) and val (124000, 150, 3)
+2025-04-20 00:43:39,632 INFO Model: "model"
+2025-04-20 00:43:39,632 INFO _________________________________________________________________
+2025-04-20 00:43:39,632 INFO  Layer (type)                Output Shape              Param #   
+2025-04-20 00:43:39,632 INFO =================================================================
+2025-04-20 00:43:39,632 INFO  input_1 (InputLayer)        [(None, 150, 3)]          0         
+2025-04-20 00:43:39,633 INFO                                                                  
+2025-04-20 00:43:39,633 INFO  dense (Dense)               (None, 150, 16)           64        
+2025-04-20 00:43:39,633 INFO                                                                  
+2025-04-20 00:43:39,633 INFO  linformer_transformer_bloc  (None, 150, 16)           2868      
+2025-04-20 00:43:39,633 INFO  k (LinformerTransformerBlo                                      
+2025-04-20 00:43:39,633 INFO  ck)                                                             
+2025-04-20 00:43:39,633 INFO                                                                  
+2025-04-20 00:43:39,633 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-04-20 00:43:39,633 INFO  tionLayer)                                                      
+2025-04-20 00:43:39,633 INFO                                                                  
+2025-04-20 00:43:39,634 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-04-20 00:43:39,634 INFO                                                                  
+2025-04-20 00:43:39,634 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-04-20 00:43:39,634 INFO                                                                  
+2025-04-20 00:43:39,634 INFO =================================================================
+2025-04-20 00:43:39,635 INFO Total params: 3289 (12.85 KB)
+2025-04-20 00:43:39,635 INFO Trainable params: 3289 (12.85 KB)
+2025-04-20 00:43:39,635 INFO Non-trainable params: 0 (0.00 Byte)
+2025-04-20 00:43:39,635 INFO _________________________________________________________________
