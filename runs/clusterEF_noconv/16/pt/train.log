@@ -1,0 +1,123 @@
+2025-04-19 20:22:35,074 INFO Starting training with args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/clusterEF_noconv', cluster_E=True, cluster_F=True, batch_size=4096, num_epochs=1000, d_model=16, d_ff=16, output_dim=16, num_heads=4, proj_dim=16, val_split=0.2, num_particles=16, sort_by='pt', convolution=False)
+2025-04-19 20:22:35,175 INFO Loaded x shape (620000, 16, 3), y shape (620000, 5)
+2025-04-19 20:22:36,102 INFO Split into train (496000, 16, 3) and val (124000, 16, 3)
+2025-04-19 20:22:38,258 INFO Model: "model"
+2025-04-19 20:22:38,258 INFO _________________________________________________________________
+2025-04-19 20:22:38,258 INFO  Layer (type)                Output Shape              Param #   
+2025-04-19 20:22:38,258 INFO =================================================================
+2025-04-19 20:22:38,258 INFO  input_1 (InputLayer)        [(None, 16, 3)]           0         
+2025-04-19 20:22:38,258 INFO                                                                  
+2025-04-19 20:22:38,259 INFO  dense (Dense)               (None, 16, 16)            64        
+2025-04-19 20:22:38,259 INFO                                                                  
+2025-04-19 20:22:38,259 INFO  linformer_transformer_bloc  (None, 16, 16)            1716      
+2025-04-19 20:22:38,259 INFO  k (LinformerTransformerBlo                                      
+2025-04-19 20:22:38,259 INFO  ck)                                                             
+2025-04-19 20:22:38,259 INFO                                                                  
+2025-04-19 20:22:38,259 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-04-19 20:22:38,259 INFO  tionLayer)                                                      
+2025-04-19 20:22:38,259 INFO                                                                  
+2025-04-19 20:22:38,260 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-04-19 20:22:38,260 INFO                                                                  
+2025-04-19 20:22:38,260 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-04-19 20:22:38,260 INFO                                                                  
+2025-04-19 20:22:38,260 INFO =================================================================
+2025-04-19 20:22:38,261 INFO Total params: 2137 (8.35 KB)
+2025-04-19 20:22:38,261 INFO Trainable params: 2137 (8.35 KB)
+2025-04-19 20:22:38,261 INFO Non-trainable params: 0 (0.00 Byte)
+2025-04-19 20:22:38,261 INFO _________________________________________________________________
+2025-04-19 20:57:27,634 INFO Saved weights to ../runs/clusterEF_noconv/16/pt/model.weights.h5
+2025-04-19 20:57:27,865 INFO Saved history metrics to .npy files
+2025-04-19 20:57:28,276 WARNING From /opt/conda/lib/python3.11/site-packages/tensorflow/python/profiler/internal/flops_registry.py:453: tensor_shape_from_node_def_name (from tensorflow.python.framework.graph_util_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate for instructions on how to migrate your code to TensorFlow v2.
+2025-04-19 20:57:28,290 INFO FLOPs per inference: 76494
+2025-04-19 20:57:28,696 INFO Avg inference time per event (ns): 4223.536
+2025-04-19 20:57:29,367 INFO Validation accuracy: 0.7278
+2025-04-19 20:57:30,212 INFO Saved training curves
+2025-04-19 20:57:30,693 INFO 1/FPR@TPR=0.8 for g: 5.853
+2025-04-19 20:57:30,693 INFO 1/FPR@TPR=0.8 for q: 6.536
+2025-04-19 20:57:30,693 INFO 1/FPR@TPR=0.8 for W: 14.910
+2025-04-19 20:57:30,693 INFO 1/FPR@TPR=0.8 for Z: 13.336
+2025-04-19 20:57:30,693 INFO 1/FPR@TPR=0.8 for t: 17.029
+2025-04-19 20:57:30,693 INFO Average 1/FPR: 11.533
+2025-04-20 03:00:42,472 INFO Starting training with args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/clusterEF_noconv', cluster_E=True, cluster_F=True, batch_size=4096, num_epochs=1000, d_model=16, d_ff=16, output_dim=16, num_heads=4, proj_dim=16, val_split=0.2, num_particles=16, sort_by='pt', convolution=False)
+2025-04-20 03:00:47,019 INFO Loaded x shape (620000, 16, 3), y shape (620000, 5)
+2025-04-20 03:00:47,754 INFO Split into train (496000, 16, 3) and val (124000, 16, 3)
+2025-04-20 03:00:49,855 INFO Model: "model"
+2025-04-20 03:00:49,855 INFO _________________________________________________________________
+2025-04-20 03:00:49,855 INFO  Layer (type)                Output Shape              Param #   
+2025-04-20 03:00:49,855 INFO =================================================================
+2025-04-20 03:00:49,855 INFO  input_1 (InputLayer)        [(None, 16, 3)]           0         
+2025-04-20 03:00:49,855 INFO                                                                  
+2025-04-20 03:00:49,856 INFO  dense (Dense)               (None, 16, 16)            64        
+2025-04-20 03:00:49,856 INFO                                                                  
+2025-04-20 03:00:49,856 INFO  linformer_transformer_bloc  (None, 16, 16)            1716      
+2025-04-20 03:00:49,856 INFO  k (LinformerTransformerBlo                                      
+2025-04-20 03:00:49,856 INFO  ck)                                                             
+2025-04-20 03:00:49,856 INFO                                                                  
+2025-04-20 03:00:49,856 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-04-20 03:00:49,856 INFO  tionLayer)                                                      
+2025-04-20 03:00:49,856 INFO                                                                  
+2025-04-20 03:00:49,856 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-04-20 03:00:49,856 INFO                                                                  
+2025-04-20 03:00:49,857 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-04-20 03:00:49,857 INFO                                                                  
+2025-04-20 03:00:49,857 INFO =================================================================
+2025-04-20 03:00:49,857 INFO Total params: 2137 (8.35 KB)
+2025-04-20 03:00:49,858 INFO Trainable params: 2137 (8.35 KB)
+2025-04-20 03:00:49,858 INFO Non-trainable params: 0 (0.00 Byte)
+2025-04-20 03:00:49,858 INFO _________________________________________________________________
+2025-04-20 03:10:59,658 INFO Starting training with args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/clusterEF_noconv', cluster_E=True, cluster_F=True, batch_size=2048, num_epochs=2000, d_model=16, d_ff=16, output_dim=16, num_heads=4, proj_dim=16, val_split=0.2, num_particles=16, sort_by='pt', convolution=False)
+2025-04-20 03:11:04,490 INFO Loaded x shape (620000, 16, 3), y shape (620000, 5)
+2025-04-20 03:11:05,705 INFO Split into train (496000, 16, 3) and val (124000, 16, 3)
+2025-04-20 03:11:07,880 INFO Model: "model"
+2025-04-20 03:11:07,880 INFO _________________________________________________________________
+2025-04-20 03:11:07,881 INFO  Layer (type)                Output Shape              Param #   
+2025-04-20 03:11:07,881 INFO =================================================================
+2025-04-20 03:11:07,881 INFO  input_1 (InputLayer)        [(None, 16, 3)]           0         
+2025-04-20 03:11:07,881 INFO                                                                  
+2025-04-20 03:11:07,881 INFO  dense (Dense)               (None, 16, 16)            64        
+2025-04-20 03:11:07,881 INFO                                                                  
+2025-04-20 03:11:07,882 INFO  linformer_transformer_bloc  (None, 16, 16)            1716      
+2025-04-20 03:11:07,882 INFO  k (LinformerTransformerBlo                                      
+2025-04-20 03:11:07,882 INFO  ck)                                                             
+2025-04-20 03:11:07,882 INFO                                                                  
+2025-04-20 03:11:07,882 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-04-20 03:11:07,882 INFO  tionLayer)                                                      
+2025-04-20 03:11:07,882 INFO                                                                  
+2025-04-20 03:11:07,882 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-04-20 03:11:07,882 INFO                                                                  
+2025-04-20 03:11:07,882 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-04-20 03:11:07,882 INFO                                                                  
+2025-04-20 03:11:07,882 INFO =================================================================
+2025-04-20 03:11:07,883 INFO Total params: 2137 (8.35 KB)
+2025-04-20 03:11:07,883 INFO Trainable params: 2137 (8.35 KB)
+2025-04-20 03:11:07,883 INFO Non-trainable params: 0 (0.00 Byte)
+2025-04-20 03:11:07,883 INFO _________________________________________________________________
+2025-04-20 03:23:14,667 INFO Starting training with args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/clusterEF_noconv', cluster_E=True, cluster_F=True, batch_size=2048, num_epochs=2000, d_model=16, d_ff=16, output_dim=16, num_heads=4, proj_dim=16, val_split=0.2, num_particles=16, sort_by='pt', convolution=False)
+2025-04-20 03:23:19,676 INFO Loaded x shape (620000, 16, 3), y shape (620000, 5)
+2025-04-20 03:23:20,718 INFO Split into train (496000, 16, 3) and val (124000, 16, 3)
+2025-04-20 03:23:22,889 INFO Model: "model"
+2025-04-20 03:23:22,889 INFO _________________________________________________________________
+2025-04-20 03:23:22,889 INFO  Layer (type)                Output Shape              Param #   
+2025-04-20 03:23:22,890 INFO =================================================================
+2025-04-20 03:23:22,890 INFO  input_1 (InputLayer)        [(None, 16, 3)]           0         
+2025-04-20 03:23:22,890 INFO                                                                  
+2025-04-20 03:23:22,890 INFO  dense (Dense)               (None, 16, 16)            64        
+2025-04-20 03:23:22,890 INFO                                                                  
+2025-04-20 03:23:22,890 INFO  linformer_transformer_bloc  (None, 16, 16)            1716      
+2025-04-20 03:23:22,890 INFO  k (LinformerTransformerBlo                                      
+2025-04-20 03:23:22,890 INFO  ck)                                                             
+2025-04-20 03:23:22,890 INFO                                                                  
+2025-04-20 03:23:22,891 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-04-20 03:23:22,891 INFO  tionLayer)                                                      
+2025-04-20 03:23:22,891 INFO                                                                  
+2025-04-20 03:23:22,891 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-04-20 03:23:22,891 INFO                                                                  
+2025-04-20 03:23:22,891 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-04-20 03:23:22,891 INFO                                                                  
+2025-04-20 03:23:22,891 INFO =================================================================
+2025-04-20 03:23:22,892 INFO Total params: 2137 (8.35 KB)
+2025-04-20 03:23:22,892 INFO Trainable params: 2137 (8.35 KB)
+2025-04-20 03:23:22,892 INFO Non-trainable params: 0 (0.00 Byte)
+2025-04-20 03:23:22,892 INFO _________________________________________________________________

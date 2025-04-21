@@ -1,0 +1,42 @@
+2025-04-20 00:14:11,831 INFO Starting training with args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/clusterF_noconv', cluster_E=False, cluster_F=True, batch_size=4096, num_epochs=1000, d_model=16, d_ff=16, output_dim=16, num_heads=4, proj_dim=16, val_split=0.2, num_particles=150, sort_by='delta_R', convolution=False)
+2025-04-20 00:14:15,427 INFO Loaded x shape (620000, 150, 3), y shape (620000, 5)
+2025-04-20 00:14:22,703 INFO Split into train (496000, 150, 3) and val (124000, 150, 3)
+2025-04-20 00:14:24,356 INFO Model: "model"
+2025-04-20 00:14:24,356 INFO _________________________________________________________________
+2025-04-20 00:14:24,356 INFO  Layer (type)                Output Shape              Param #   
+2025-04-20 00:14:24,356 INFO =================================================================
+2025-04-20 00:14:24,357 INFO  input_1 (InputLayer)        [(None, 150, 3)]          0         
+2025-04-20 00:14:24,357 INFO                                                                  
+2025-04-20 00:14:24,357 INFO  dense (Dense)               (None, 150, 16)           64        
+2025-04-20 00:14:24,357 INFO                                                                  
+2025-04-20 00:14:24,358 INFO  linformer_transformer_bloc  (None, 150, 16)           11828     
+2025-04-20 00:14:24,358 INFO  k (LinformerTransformerBlo                                      
+2025-04-20 00:14:24,358 INFO  ck)                                                             
+2025-04-20 00:14:24,358 INFO                                                                  
+2025-04-20 00:14:24,358 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-04-20 00:14:24,358 INFO  tionLayer)                                                      
+2025-04-20 00:14:24,358 INFO                                                                  
+2025-04-20 00:14:24,358 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-04-20 00:14:24,358 INFO                                                                  
+2025-04-20 00:14:24,358 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-04-20 00:14:24,359 INFO                                                                  
+2025-04-20 00:14:24,359 INFO =================================================================
+2025-04-20 00:14:24,360 INFO Total params: 12249 (47.85 KB)
+2025-04-20 00:14:24,360 INFO Trainable params: 12249 (47.85 KB)
+2025-04-20 00:14:24,360 INFO Non-trainable params: 0 (0.00 Byte)
+2025-04-20 00:14:24,360 INFO _________________________________________________________________
+2025-04-20 01:30:16,396 INFO Saved weights to ../runs/clusterF_noconv/150/delta_R/model.weights.h5
+2025-04-20 01:30:16,648 INFO Saved history metrics to .npy files
+2025-04-20 01:30:16,946 WARNING From /opt/conda/lib/python3.11/site-packages/tensorflow/python/profiler/internal/flops_registry.py:453: tensor_shape_from_node_def_name (from tensorflow.python.framework.graph_util_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate for instructions on how to migrate your code to TensorFlow v2.
+2025-04-20 01:30:16,956 INFO FLOPs per inference: 711118
+2025-04-20 01:30:17,469 INFO Avg inference time per event (ns): 5436.184
+2025-04-20 01:30:18,802 INFO Validation accuracy: 0.8026
+2025-04-20 01:30:19,463 INFO Saved training curves
+2025-04-20 01:30:19,839 INFO 1/FPR@TPR=0.8 for g: 12.209
+2025-04-20 01:30:19,839 INFO 1/FPR@TPR=0.8 for q: 9.262
+2025-04-20 01:30:19,839 INFO 1/FPR@TPR=0.8 for W: 47.041
+2025-04-20 01:30:19,839 INFO 1/FPR@TPR=0.8 for Z: 64.737
+2025-04-20 01:30:19,839 INFO 1/FPR@TPR=0.8 for t: 29.178
+2025-04-20 01:30:19,839 INFO Average 1/FPR: 32.485
