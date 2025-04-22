@@ -53,9 +53,8 @@ fi
 # Loop over particles, sort modes, and repeat 5 trials each
 for NP in 16 32 150; do
   for SORT in pt delta_R kt; do
-    for RUN in {1..5}; do
       echo "=========================================="
-      echo "Run #$RUN for num_particles=$NP, sort_by=$SORT"
+      echo "num_particles=$NP, sort_by=$SORT"
       echo "=========================================="
       ./train_linformer.py \
         --data_dir             "${DATA_DIR}" \
@@ -73,6 +72,5 @@ for NP in 16 32 150; do
         --proj_dim             "${PROJ_DIM}" \
         --num_particles        "${NP}" \
         --sort_by              "${SORT}"
-    done
   done
 done
