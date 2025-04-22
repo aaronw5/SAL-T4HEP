@@ -12,14 +12,14 @@ if PROJECT_ROOT not in sys.path:
 import time
 import argparse
 import logging
-import random
 
 import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, Model
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_curve, auc
-from tensorflow.keras.callbacks import LearningRateScheduler, EarlyStopping
+from tensorflow.keras.callbacks import ReduceLROnPlateau, EarlyStopping
+import fastjet as fj
 
 import matplotlib.pyplot as plt
 
@@ -69,13 +69,61 @@ def parse_args():
     p.add_argument("--num_particles",  type=int,   required=True,
                    help="Number of particles in each event (replaces hard‑coded value)")
     p.add_argument("--sort_by",
-                   choices=["pt","eta","phi","delta_R", 'kt'],
+                   choices=["pt","eta","phi","delta_R","kt","cluster"],
                    default="pt",
                    help="How to sort particles before training")
+    p.add_argument("--cluster_R",      type=float, default=0.4,
+                   help="Radius parameter for FastJet clustering when using cluster sort")
+    p.add_argument("--cluster_batch_size", type=int, default=1024,
+                   help="Batch size for applying FastJet clustering to events")
     p.add_argument("--convolution",      action="store_true",
                    help="If set, use convolution layer on top of linformer attention")
 
     return p.parse_args()
+
+
+def sort_events_by_cluster(x, R, batch_size):
+    """
+    Cluster each event with FastJet and sort particles by cluster order (jets sorted by pT)
+    Dynamically handles any number of jets and pads remaining constituents.
+    """
+    n_events, n_particles, feat_dim = x.shape
+    sorted_x = np.zeros_like(x)
+    jet_def = fj.JetDefinition(fj.antikt_algorithm, R)
+
+    for start in range(0, n_events, batch_size):
+        end = min(start + batch_size, n_events)
+        batch = x[start:end]
+        for i, event in enumerate(batch):
+            pts = event[:, 0]
+            etas = event[:, 1]
+            phis = event[:, 2]
+            # build four-vectors
+            px = pts * np.cos(phis)
+            py = pts * np.sin(phis)
+            pz = pts * np.sinh(etas)
+            E  = pts * np.cosh(etas)
+            ps = [fj.PseudoJet(float(px[j]), float(py[j]), float(pz[j]), float(E[j])) 
+                  for j in range(n_particles)]
+            for j, pj in enumerate(ps):
+                pj.set_user_index(j)
+
+            seq = fj.ClusterSequence(ps, jet_def)
+            jets = seq.inclusive_jets()
+            # sort jets by descending pT
+            jets.sort(key=lambda jet: jet.perp(), reverse=True)
+
+            sorted_indices = []
+            for jet in jets:
+                for const in jet.constituents():
+                    idx = const.user_index()
+                    sorted_indices.append(idx)
+            # include any leftover particles
+            remaining = [idx for idx in range(n_particles) if idx not in sorted_indices]
+            sorted_indices.extend(remaining)
+
+            sorted_x[start + i] = event[sorted_indices]
+    return sorted_x
 
 
 def main():
@@ -83,15 +131,6 @@ def main():
 
     # create a subdirectory under save_dir based on num_particles and sort_by
     save_dir = os.path.join(args.save_dir, str(args.num_particles), args.sort_by)
-    trial_num = 0
-    while True:
-        trial_dir = os.path.join(save_dir, f"trial-{trial_num}")
-        time.sleep(random.randint(1, 4))
-        # Check if directory doesn't exist
-        if not os.path.isdir(trial_dir):
-            save_dir = trial_dir
-            break
-        trial_num += 1
     os.makedirs(save_dir, exist_ok=True)
 
     # setup logging
@@ -118,20 +157,30 @@ def main():
     # sort
     if args.sort_by == "pt":
         key = x[:, :, 0]
+        sort_idx = np.argsort(key, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
     elif args.sort_by == "eta":
         key = x[:, :, 1]
+        sort_idx = np.argsort(key, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
     elif args.sort_by == "phi":
         key = x[:, :, 2]
+        sort_idx = np.argsort(key, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
     elif args.sort_by == "delta_R":
         key = np.sqrt(x[:, :, 1]**2 + x[:, :, 2]**2)
+        sort_idx = np.argsort(key, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
     elif args.sort_by == "kt":
         key = x[:, :, 0] * np.sqrt(x[:, :, 1]**2 + x[:, :, 2]**2)
+        sort_idx = np.argsort(key, axis=1)[:, ::-1]
+        x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
+    elif args.sort_by == "cluster":
+        logging.info("Sorting events by FastJet clustering with R=%s, batch_size=%d", 
+                     args.cluster_R, args.cluster_batch_size)
+        x = sort_events_by_cluster(x, args.cluster_R, args.cluster_batch_size)
     else:
-        raise ValueError("argument not in pt, eta, phi, delta_R, kt")
-
-
-    sort_idx = np.argsort(key, axis=1)[:, ::-1]
-    x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
+        raise ValueError(f"Unknown sort_by option {args.sort_by}")
 
     # split
     x_train, x_val, y_train, y_val = train_test_split(
@@ -150,29 +199,38 @@ def main():
         num_heads=args.num_heads,
         proj_dim=args.proj_dim,
         cluster_E=args.cluster_E,
-        cluster_F=args.cluster_F
+        cluster_F=args.cluster_F,
+        convolution=args.convolution,
+        conv_filter_heights=[1,3,5],    
+        vertical_stride=1
     )
+
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss="categorical_crossentropy",
         metrics=["accuracy"]
     )
     model.summary(print_fn=lambda s: logging.info(s))
+    from tensorflow.keras.callbacks import ModelCheckpoint
 
-    def step_decay(epoch, lr):
-        # every 100 epochs, multiply the LR by 0.5
-        if epoch > 0 and epoch % 100 == 0:
-            return lr * 0.1
-        return lr
+    ckpt = ModelCheckpoint(
+        filepath=os.path.join(save_dir, "best.weights.h5"),
+        monitor="val_loss",
+        save_best_only=True,
+        verbose=1
+    )
 
-# will print out LR adjustments as we go
-    lr_scheduler = LearningRateScheduler(step_decay, verbose=1)
+    reduce_lr = ReduceLROnPlateau(
+        monitor='val_loss',   # what to watch
+        factor=0.5,           # multiply LR by this when triggered
+        patience=30,          # how many epochs with no improvement before reducing
+        min_lr=1e-7,          # floor on the learning rate
+        verbose=1
+    )
 
-    # stop training if val_loss doesn’t improve for 10 epochs,
-    # and roll back to the best weights
     early_stop = EarlyStopping(
         monitor="val_loss",
-        patience=50,
+        patience=100,
         restore_best_weights=True,
         verbose=1
     )
@@ -183,10 +241,9 @@ def main():
         validation_data=(x_val, y_val),
         epochs=args.num_epochs,
         batch_size=args.batch_size,
-        callbacks=[lr_scheduler, early_stop],
+        callbacks=[reduce_lr, early_stop, ckpt],
         verbose=1
     )
-
 
     # save weights
     weights_file = os.path.join(save_dir, "model.weights.h5")
@@ -200,10 +257,13 @@ def main():
     np.save(os.path.join(save_dir, "val_accuracy.npy"), np.array(history.history["val_accuracy"]))
     logging.info("Saved history metrics to .npy files")
 
-    # compute FLOPs
+    # compute FLOPs and MACs
     flops = get_flops(model, [1, num_particles, feature_dim])
+    macs = flops // 2
     logging.info("FLOPs per inference: %d", flops)
+    logging.info("MACs per inference: %d", macs)
     print(f"FLOPs per inference: {flops}")
+    print(f"MACs per inference: {macs}")
 
     # timing
     _ = model(x_val[:args.batch_size])
