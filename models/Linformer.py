@@ -1,9 +1,8 @@
-import numpy as np
 import tensorflow as tf
 from tensorflow.keras import layers, Model
 
 # ---------------------------
-# Aggregation Layer
+# Aggregation Layer (unchanged)
 # ---------------------------
 class AggregationLayer(layers.Layer):
     """
@@ -22,84 +21,77 @@ class AggregationLayer(layers.Layer):
         else:
             raise ValueError("Given aggregation string is not implemented. Use 'mean' or 'max'.")
 
-
 # ---------------------------
-# Attention Convolution Layer
+# Attention Convolution Layer (modified)
 # ---------------------------
-import tensorflow as tf
-from tensorflow.keras import layers
-
 class AttentionConvLayer(layers.Layer):
     """
-    Applies 2D convolutions on attention scores to capture local patterns along sequence.
-    Parallelizes multiple filter heights with tf.vectorized_map.
+    Applies one or more 2D convolutions on the attention scores (before softmax)
+    with different filter heights. Each convolution uses a kernel whose width exactly
+    matches the attention matrixâ€™s width (proj_dim) so that the filter only moves
+    along the sequence (vertical) direction.
+    
+    A new parameter, vertical_stride, enables you to change the stride along the vertical dimension.
+    When vertical_stride > 1, the output is upsampled back to the original sequence length.
     """
     def __init__(self, filter_heights=[1], vertical_stride=1, **kwargs):
         super(AttentionConvLayer, self).__init__(**kwargs)
         self.filter_heights = filter_heights
         self.vertical_stride = vertical_stride
-        self.conv_layers = []
+        self.conv_layers = []  # Will be instantiated in build()
 
     def build(self, input_shape):
-        # input_shape: (batch_size, num_heads, seq_len, proj_dim)
-        _, _, self.seq_len, self.proj_dim = input_shape
+        # input_shape should be (batch_size, num_heads, seq_len, proj_dim)
+        self.proj_dim = input_shape[-1]
         self.conv_layers = []
         for h in self.filter_heights:
-            conv = layers.Conv2D(
-                filters=1,
+            # Kernel covers h rows and the entire proj_dim (horizontal) dimension.
+            conv_layer = layers.Conv2D(
+                filters=1, 
                 kernel_size=(h, self.proj_dim),
                 strides=(self.vertical_stride, 1),
                 padding='same',
-                activation=None
-            )
-            self.conv_layers.append(conv)
+                activation=None)
+            self.conv_layers.append(conv_layer)
         super(AttentionConvLayer, self).build(input_shape)
 
     def call(self, inputs):
-        # inputs: (B, H, N, P)
-        shape = tf.shape(inputs)
-        batch, heads, seq_len, proj_dim = shape[0], shape[1], shape[2], shape[3]
-        # reshape for Conv2D: (B*H, N, P, 1)
+        # inputs shape: (batch_size, num_heads, seq_len, proj_dim)
+        batch_size = tf.shape(inputs)[0]
+        num_heads = tf.shape(inputs)[1]
+        seq_len = tf.shape(inputs)[2]
+        proj_dim = tf.shape(inputs)[3]
+        # Reshape to merge batch and head dims and add a channel dimension: (B*num_heads, seq_len, proj_dim, 1)
         x = tf.reshape(inputs, (-1, seq_len, proj_dim, 1))
+        
+        # If only one filter height is used, avoid extra stacking/averaging.
+        if len(self.conv_layers) == 1:
+            conv_out = self.conv_layers[0](x)  # (B*num_heads, new_seq_len, proj_dim, 1)
+            out = tf.squeeze(conv_out, axis=-1)  # (B*num_heads, new_seq_len, proj_dim)
+        else:
+            conv_outputs = []
+            for conv in self.conv_layers:
+                conv_out = conv(x)  # (B*num_heads, new_seq_len, proj_dim, 1)
+                conv_outputs.append(conv_out)
+            # Stack along a new axis and average over the filter dimension.
+            stacked = tf.stack(conv_outputs, axis=-1)  # (B*num_heads, new_seq_len, proj_dim, 1, num_filters)
+            avg = tf.reduce_mean(stacked, axis=-1)      # (B*num_heads, new_seq_len, proj_dim, 1)
+            out = tf.squeeze(avg, axis=-1)              # (B*num_heads, new_seq_len, proj_dim)
 
-        n_filters = len(self.conv_layers)
-        indices = tf.range(n_filters, dtype=tf.int32)
-
-        # vectorized mapping of each conv layer over the list of filters
-        @tf.function
-        def apply_conv(i):
-            return self.conv_layers[i](x)  # (B*H, N', P, 1)
-
-        # outs: (n_filters, B*H, N', P, 1)
-        outs = tf.vectorized_map(apply_conv, indices)
-        # average across filter dimension
-        avg = tf.reduce_mean(outs, axis=0)      # -> (B*H, N', P, 1)
-        out = tf.squeeze(avg, -1)               # -> (B*H, N', P)
-
-        # optional resize if vertical_stride != 1
-        def resize():
-            resized = tf.image.resize(
-                tf.expand_dims(out, -1),
-                size=(seq_len, proj_dim),
-                method='bilinear'
-            )
-            return tf.squeeze(resized, -1)
-
+        # If vertical_stride > 1, the new sequence length (new_seq_len) may be smaller than seq_len.
+        # Upsample back to the original sequence length.
+        new_seq_len = tf.shape(out)[1]
         if self.vertical_stride > 1:
-            new_seq = tf.shape(out)[1]
-            out = tf.cond(
-                tf.equal(new_seq, seq_len),
-                lambda: out,
-                resize
-            )
-
-        # reshape back to (B, H, N, P)
-        return tf.reshape(out, (batch, heads, seq_len, proj_dim))
-
-
+            # Expand dims to use tf.image.resize which expects a 4D tensor.
+            out = tf.image.resize(tf.expand_dims(out, -1), size=(seq_len, proj_dim), method='bilinear')
+            out = tf.squeeze(out, axis=-1)  # Back to shape: (B*num_heads, seq_len, proj_dim)
+        
+        # Reshape back to (batch_size, num_heads, seq_len, proj_dim)
+        output = tf.reshape(out, (batch_size, num_heads, seq_len, proj_dim))
+        return output
 
 # ---------------------------
-# Dynamic Tanh Activation
+# Dynamic Tanh Activation (unchanged)
 # ---------------------------
 class DynamicTanh(layers.Layer):
     def __init__(self, **kwargs):
@@ -113,9 +105,8 @@ class DynamicTanh(layers.Layer):
     def call(self, inputs):
         return tf.math.tanh(self.alpha * inputs + self.beta)
 
-
 # ---------------------------
-# Clustered Linformer Attention
+# Clustered Linformer Attention (fixed add_weight ordering)
 # ---------------------------
 class ClusteredLinformerAttention(layers.Layer):
     def __init__(
@@ -126,7 +117,7 @@ class ClusteredLinformerAttention(layers.Layer):
         cluster_E=False,
         cluster_F=False,
         convolution=False,
-        conv_filter_heights=[1],
+        conv_filter_heights=[1,3,5],
         vertical_stride=1,
         **kwargs
     ):
@@ -144,35 +135,32 @@ class ClusteredLinformerAttention(layers.Layer):
 
     def build(self, input_shape):
         self.seq_len = input_shape[1]
-        # Q, K, V
-        self.wq = self.add_weight(shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True, name='wq')
-        self.wk = self.add_weight(shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True, name='wk')
-        self.wv = self.add_weight(shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True, name='wv')
+        # Q,K,V weights
+        self.wq = self.add_weight(name='wq', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
+        self.wk = self.add_weight(name='wk', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
+        self.wv = self.add_weight(name='wv', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
 
-        # E projection
+        # E and F projections
         if not self.cluster_E:
-            self.E = self.add_weight(shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True, name='proj_E')
+            self.E = self.add_weight(name='proj_E', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
         else:
-            self.chunk_size_E = (self.seq_len + self.proj_dim - 1) // self.proj_dim
-            self.cluster_E_W = self.add_weight(shape=(self.num_heads, self.proj_dim, self.chunk_size_E), initializer='glorot_uniform', trainable=True, name='cluster_E_W')
-
-        # F projection
+            self.chunk_size_E = (self.seq_len + self.proj_dim -1)//self.proj_dim
+            self.cluster_E_W = self.add_weight(name='cluster_E_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_E), initializer='glorot_uniform', trainable=True)
         if not self.cluster_F:
-            self.F = self.add_weight(shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True, name='proj_F')
+            self.F = self.add_weight(name='proj_F', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
         else:
-            self.chunk_size_F = (self.seq_len + self.proj_dim - 1) // self.proj_dim
-            self.cluster_F_W = self.add_weight(shape=(self.num_heads, self.proj_dim, self.chunk_size_F), initializer='glorot_uniform', trainable=True, name='cluster_F_W')
+            self.chunk_size_F = (self.seq_len + self.proj_dim -1)//self.proj_dim
+            self.cluster_F_W = self.add_weight(name='cluster_F_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_F), initializer='glorot_uniform', trainable=True)
 
-        # Optional convolution on attention scores
         if self.convolution:
-            self.attn_conv = AttentionConvLayer(filter_heights=self.conv_filter_heights, vertical_stride=self.vertical_stride)
+            self.attn_conv = AttentionConvLayer(self.conv_filter_heights, self.vertical_stride)
 
         self.dense = layers.Dense(self.d_model)
         super().build(input_shape)
 
     def split_heads(self, x, batch_size):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
-        return tf.transpose(x, perm=[0, 2, 1, 3])
+        return tf.transpose(x, [0, 2, 1, 3])
 
     def call(self, x):
         batch = tf.shape(x)[0]
@@ -183,7 +171,7 @@ class ClusteredLinformerAttention(layers.Layer):
         k = self.split_heads(k, batch)
         v = self.split_heads(v, batch)
 
-        # Project keys
+        # key projection
         if not self.cluster_E:
             k_proj = tf.einsum('bhnd,hnr->bhrd', k, self.E)
         else:
@@ -192,7 +180,7 @@ class ClusteredLinformerAttention(layers.Layer):
             k_chunks = tf.reshape(k_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_E, self.depth))
             k_proj = tf.einsum('bhcld,hcl->bhcd', k_chunks, self.cluster_E_W)
 
-        # Project values
+        # value projection
         if not self.cluster_F:
             v_proj = tf.einsum('bhnd,hnr->bhrd', v, self.F)
         else:
@@ -201,74 +189,58 @@ class ClusteredLinformerAttention(layers.Layer):
             v_chunks = tf.reshape(v_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_F, self.depth))
             v_proj = tf.einsum('bhcld,hcl->bhcd', v_chunks, self.cluster_F_W)
 
-        # Attention scores
+        # attention scores
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
         if self.convolution:
             scores = self.attn_conv(scores)
-        attn_weights = tf.nn.softmax(scores, axis=-1)
-        attn_out = tf.matmul(attn_weights, v_proj)
+        weights = tf.nn.softmax(scores, axis=-1)
+        attn_out = tf.matmul(weights, v_proj)
 
-        # Merge heads
-        attn_out = tf.transpose(attn_out, perm=[0,2,1,3])
+        # merge heads
+        attn_out = tf.transpose(attn_out, [0,2,1,3])
         concat = tf.reshape(attn_out, (batch, -1, self.d_model))
         return self.dense(concat)
 
-
 # ---------------------------
-# Linformer Transformer Block
+# Transformer Block and Classifier Builder (unchanged)
 # ---------------------------
 class LinformerTransformerBlock(layers.Layer):
     def __init__(self, d_model, d_ff, output_dim, num_heads, proj_dim,
                  cluster_E=False, cluster_F=False,
-                 convolution=False, conv_filter_heights=[1], vertical_stride=1,
-                 **kwargs):
-        super(LinformerTransformerBlock, self).__init__(**kwargs)
-        self.attention = ClusteredLinformerAttention(
+                 convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, **kwargs):
+        super().__init__(**kwargs)
+        self.attn = ClusteredLinformerAttention(
             d_model, num_heads, proj_dim,
             cluster_E, cluster_F,
-            convolution, conv_filter_heights, vertical_stride
-        )
-        self.dTanh1 = DynamicTanh()
-        self.dTanh2 = DynamicTanh()
+            convolution, conv_filter_heights, vertical_stride)
+        self.act1 = DynamicTanh()
+        self.act2 = DynamicTanh()
         self.ffn = tf.keras.Sequential([
             layers.Dense(d_ff, activation='relu'),
             layers.Dense(d_model)
         ])
 
     def call(self, x):
-        attn_out = self.attention(x)
-        out1 = self.dTanh1(x + attn_out)
+        attn_out = self.attn(x)
+        out1 = self.act1(x + attn_out)
         ffn_out = self.ffn(out1)
-        out2 = self.dTanh2(out1 + ffn_out)
-        return out2
+        return self.act2(out1 + ffn_out)
 
 
-# ---------------------------
-# Build Linformer Classifier
-# ---------------------------
 def build_linformer_transformer_classifier(
-    num_particles,
-    feature_dim,
-    d_model=16,
-    d_ff=16,
-    output_dim=16,
-    num_heads=8,
-    proj_dim=8,
-    cluster_E=False,
-    cluster_F=False,
-    convolution=False,
-    conv_filter_heights=[1,3,5,7],
-    vertical_stride=1
-):
-    inputs = layers.Input(shape=(num_particles, feature_dim))
+    num_particles, feature_dim,
+    d_model=16, d_ff=16, output_dim=16,
+    num_heads=4, proj_dim=4,
+    cluster_E=False, cluster_F=False,
+    convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1):
+    inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation='relu')(inputs)
     x = LinformerTransformerBlock(
-        d_model, d_ff, output_dim,
-        num_heads, proj_dim,
+        d_model, d_ff, output_dim, num_heads, proj_dim,
         cluster_E, cluster_F,
-        convolution, conv_filter_heights)(x)
-    pooled = AggregationLayer(aggreg='max')(x)
-    x = layers.Dense(d_model, activation='relu')(pooled)
+        convolution, conv_filter_heights, vertical_stride)(x)
+    x = AggregationLayer('max')(x)
+    x = layers.Dense(d_model, activation='relu')(x)
     outputs = layers.Dense(5, activation='softmax')(x)
-    return Model(inputs=inputs, outputs=outputs)
+    return Model(inputs, outputs)
