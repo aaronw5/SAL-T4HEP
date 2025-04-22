@@ -12,6 +12,7 @@ if PROJECT_ROOT not in sys.path:
 import time
 import argparse
 import logging
+import random
 
 import numpy as np
 import tensorflow as tf
@@ -82,6 +83,15 @@ def main():
 
     # create a subdirectory under save_dir based on num_particles and sort_by
     save_dir = os.path.join(args.save_dir, str(args.num_particles), args.sort_by)
+    trial_num = 0
+    while True:
+        trial_dir = os.path.join(save_dir, f"trial-{trial_num}")
+        time.sleep(random.randint(1, 4))
+        # Check if directory doesn't exist
+        if not os.path.isdir(trial_dir):
+            save_dir = trial_dir
+            break
+        trial_num += 1
     os.makedirs(save_dir, exist_ok=True)
 
     # setup logging
@@ -114,8 +124,11 @@ def main():
         key = x[:, :, 2]
     elif args.sort_by == "delta_R":
         key = np.sqrt(x[:, :, 1]**2 + x[:, :, 2]**2)
-    else:
+    elif args.sort_by == "kt":
         key = x[:, :, 0] * np.sqrt(x[:, :, 1]**2 + x[:, :, 2]**2)
+    else:
+        raise ValueError("argument not in pt, eta, phi, delta_R, kt")
+
 
     sort_idx = np.argsort(key, axis=1)[:, ::-1]
     x = np.take_along_axis(x, sort_idx[:, :, None], axis=1)
