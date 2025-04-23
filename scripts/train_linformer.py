@@ -109,9 +109,16 @@ def sort_events_by_cluster(x, R, batch_size):
                 pj.set_user_index(j)
 
             seq = fj.ClusterSequence(ps, jet_def)
-            jets = seq.inclusive_jets()
-            # sort jets by descending pT
-            jets.sort(key=lambda jet: jet.perp(), reverse=True)
+            # jets = seq.inclusive_jets()
+            # print(f"jets after clustering: {jets}")
+            # # sort jets by descending pT
+            # jets.sort(key=lambda jet: jet.perp(), reverse=True)
+
+            jets = sorted(
+                seq.inclusive_jets(),
+                key=lambda jet: jet.perp(),
+                reverse=True
+            )
 
             sorted_indices = []
             for jet in jets:
@@ -236,12 +243,20 @@ def main():
     )
 
     # train
+    # history = model.fit(
+    #     x_train, y_train,
+    #     validation_data=(x_val, y_val),
+    #     epochs=args.num_epochs,
+    #     batch_size=args.batch_size,
+    #     callbacks=[reduce_lr, early_stop, ckpt],
+    #     verbose=1
+    # )
+
     history = model.fit(
         x_train, y_train,
         validation_data=(x_val, y_val),
         epochs=args.num_epochs,
         batch_size=args.batch_size,
-        callbacks=[reduce_lr, early_stop, ckpt],
         verbose=1
     )
 

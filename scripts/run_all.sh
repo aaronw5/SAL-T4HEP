@@ -52,7 +52,7 @@ fi
 
 # Loop over particles, sort modes, and repeat 5 trials each
 for NP in 16 32 150; do
-  for SORT in pt delta_R kt; do
+  for SORT in cluster pt delta_R kt; do
       echo "=========================================="
       echo "num_particles=$NP, sort_by=$SORT"
       echo "=========================================="
