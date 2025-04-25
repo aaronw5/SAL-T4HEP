@@ -153,9 +153,9 @@ def main():
     # Callbacks
     ckpt       = ModelCheckpoint(os.path.join(save_dir, "best.weights.h5"),
                                  monitor="val_loss", save_best_only=True, verbose=1)
-    early_stop = EarlyStopping(monitor="val_loss", patience=40,
+    early_stop = EarlyStopping(monitor="val_loss", patience=80,
                                restore_best_weights=True, verbose=1)
-    callbacks  = [ckpt]
+    callbacks  = [ckpt, early_stop]
 
     # Training schedule
     schedule = [
