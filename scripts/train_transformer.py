@@ -155,11 +155,13 @@ def main():
                                  monitor="val_loss", save_best_only=True, verbose=1)
     early_stop = EarlyStopping(monitor="val_loss", patience=40,
                                restore_best_weights=True, verbose=1)
-    callbacks  = [early_stop, ckpt]
+    callbacks  = [ckpt]
 
     # Training schedule
-    schedule = [ (128,200),(256,200),(512,200),(1024,200),(2048,200),(4096,400) ]
-
+    schedule = [
+        (128,  100), (256,  100), (512,  100),
+        (1024, 200), (2048, 200), (4096, 400),
+    ]
     current_epoch = 0
     all_histories = []
 
