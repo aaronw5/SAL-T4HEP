@@ -152,7 +152,7 @@ def main():
         output_dim=args.output_dim, num_heads=args.num_heads,
         proj_dim=args.proj_dim, cluster_E=args.cluster_E,
         cluster_F=args.cluster_F, share_EF=args.share_EF,
-        convolution=args.convolution, conv_filter_heights=[1,2, 3,4,5,6,7,6,9,10,11,12,13,14,15,16],
+        convolution=args.convolution, conv_filter_heights=[1,3,5],
         vertical_stride=1)
     model.compile(optimizer=tf.keras.optimizers.Adam(),
                   loss="categorical_crossentropy", metrics=["accuracy"])
