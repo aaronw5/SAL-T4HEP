@@ -22,13 +22,13 @@ class AggregationLayer(layers.Layer):
             raise ValueError("Given aggregation string is not implemented. Use 'mean' or 'max'.")
 
 # ---------------------------
-# Attention Convolution Layer (modified)
+# Attention Convolution Layer (unchanged)
 # ---------------------------
 class AttentionConvLayer(layers.Layer):
     """
     Applies one or more 2D convolutions on the attention scores (before softmax)
     with different filter heights. Each convolution uses a kernel whose width exactly
-    matches the attention matrixâ€™s width (proj_dim) so that the filter only moves
+    matches the attention matrix’s width (proj_dim) so that the filter only moves
     along the sequence (vertical) direction.
     
     A new parameter, vertical_stride, enables you to change the stride along the vertical dimension.
@@ -41,11 +41,9 @@ class AttentionConvLayer(layers.Layer):
         self.conv_layers = []  # Will be instantiated in build()
 
     def build(self, input_shape):
-        # input_shape should be (batch_size, num_heads, seq_len, proj_dim)
         self.proj_dim = input_shape[-1]
         self.conv_layers = []
         for h in self.filter_heights:
-            # Kernel covers h rows and the entire proj_dim (horizontal) dimension.
             conv_layer = layers.Conv2D(
                 filters=1, 
                 kernel_size=(h, self.proj_dim),
@@ -56,37 +54,25 @@ class AttentionConvLayer(layers.Layer):
         super(AttentionConvLayer, self).build(input_shape)
 
     def call(self, inputs):
-        # inputs shape: (batch_size, num_heads, seq_len, proj_dim)
         batch_size = tf.shape(inputs)[0]
         num_heads = tf.shape(inputs)[1]
         seq_len = tf.shape(inputs)[2]
         proj_dim = tf.shape(inputs)[3]
-        # Reshape to merge batch and head dims and add a channel dimension: (B*num_heads, seq_len, proj_dim, 1)
         x = tf.reshape(inputs, (-1, seq_len, proj_dim, 1))
         
-        # If only one filter height is used, avoid extra stacking/averaging.
         if len(self.conv_layers) == 1:
-            conv_out = self.conv_layers[0](x)  # (B*num_heads, new_seq_len, proj_dim, 1)
-            out = tf.squeeze(conv_out, axis=-1)  # (B*num_heads, new_seq_len, proj_dim)
+            conv_out = self.conv_layers[0](x)
+            out = tf.squeeze(conv_out, axis=-1)
         else:
-            conv_outputs = []
-            for conv in self.conv_layers:
-                conv_out = conv(x)  # (B*num_heads, new_seq_len, proj_dim, 1)
-                conv_outputs.append(conv_out)
-            # Stack along a new axis and average over the filter dimension.
-            stacked = tf.stack(conv_outputs, axis=-1)  # (B*num_heads, new_seq_len, proj_dim, 1, num_filters)
-            avg = tf.reduce_mean(stacked, axis=-1)      # (B*num_heads, new_seq_len, proj_dim, 1)
-            out = tf.squeeze(avg, axis=-1)              # (B*num_heads, new_seq_len, proj_dim)
+            conv_outputs = [conv(x) for conv in self.conv_layers]
+            stacked = tf.stack(conv_outputs, axis=-1)
+            avg = tf.reduce_mean(stacked, axis=-1)
+            out = tf.squeeze(avg, axis=-1)
 
-        # If vertical_stride > 1, the new sequence length (new_seq_len) may be smaller than seq_len.
-        # Upsample back to the original sequence length.
         new_seq_len = tf.shape(out)[1]
         if self.vertical_stride > 1:
-            # Expand dims to use tf.image.resize which expects a 4D tensor.
             out = tf.image.resize(tf.expand_dims(out, -1), size=(seq_len, proj_dim), method='bilinear')
-            out = tf.squeeze(out, axis=-1)  # Back to shape: (B*num_heads, seq_len, proj_dim)
-        
-        # Reshape back to (batch_size, num_heads, seq_len, proj_dim)
+            out = tf.squeeze(out, axis=-1)
         output = tf.reshape(out, (batch_size, num_heads, seq_len, proj_dim))
         return output
 
@@ -106,7 +92,7 @@ class DynamicTanh(layers.Layer):
         return tf.math.tanh(self.alpha * inputs + self.beta)
 
 # ---------------------------
-# Clustered Linformer Attention (fixed add_weight ordering)
+# Clustered Linformer Attention (with share_EF support)
 # ---------------------------
 class ClusteredLinformerAttention(layers.Layer):
     def __init__(
@@ -116,6 +102,7 @@ class ClusteredLinformerAttention(layers.Layer):
         proj_dim,
         cluster_E=False,
         cluster_F=False,
+        share_EF=False,
         convolution=False,
         conv_filter_heights=[1,3,5],
         vertical_stride=1,
@@ -129,6 +116,7 @@ class ClusteredLinformerAttention(layers.Layer):
         self.proj_dim = proj_dim
         self.cluster_E = cluster_E
         self.cluster_F = cluster_F
+        self.share_EF = share_EF
         self.convolution = convolution
         self.conv_filter_heights = conv_filter_heights
         self.vertical_stride = vertical_stride
@@ -139,18 +127,27 @@ class ClusteredLinformerAttention(layers.Layer):
         self.wq = self.add_weight(name='wq', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
         self.wk = self.add_weight(name='wk', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
         self.wv = self.add_weight(name='wv', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
+        self.chunk_size_F = (self.seq_len + self.proj_dim - 1) // self.proj_dim
+        self.chunk_size_E = (self.seq_len + self.proj_dim - 1) // self.proj_dim
 
-        # E and F projections
+        # E and F projections (optionally shared)
         if not self.cluster_E:
+            # create E
             self.E = self.add_weight(name='proj_E', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
         else:
-            self.chunk_size_E = (self.seq_len + self.proj_dim -1)//self.proj_dim
             self.cluster_E_W = self.add_weight(name='cluster_E_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_E), initializer='glorot_uniform', trainable=True)
-        if not self.cluster_F:
-            self.F = self.add_weight(name='proj_F', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
+
+        if self.share_EF:
+            # share E and F
+            if self.cluster_E:
+                self.cluster_F_W = self.cluster_E_W
+            else:
+                self.F = self.E
         else:
-            self.chunk_size_F = (self.seq_len + self.proj_dim -1)//self.proj_dim
-            self.cluster_F_W = self.add_weight(name='cluster_F_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_F), initializer='glorot_uniform', trainable=True)
+            if not self.cluster_F:
+                self.F = self.add_weight(name='proj_F', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
+            else:
+                self.cluster_F_W = self.add_weight(name='cluster_F_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_F), initializer='glorot_uniform', trainable=True)
 
         if self.convolution:
             self.attn_conv = AttentionConvLayer(self.conv_filter_heights, self.vertical_stride)
@@ -189,7 +186,6 @@ class ClusteredLinformerAttention(layers.Layer):
             v_chunks = tf.reshape(v_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_F, self.depth))
             v_proj = tf.einsum('bhcld,hcl->bhcd', v_chunks, self.cluster_F_W)
 
-        # attention scores
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
         if self.convolution:
@@ -197,22 +193,21 @@ class ClusteredLinformerAttention(layers.Layer):
         weights = tf.nn.softmax(scores, axis=-1)
         attn_out = tf.matmul(weights, v_proj)
 
-        # merge heads
         attn_out = tf.transpose(attn_out, [0,2,1,3])
         concat = tf.reshape(attn_out, (batch, -1, self.d_model))
         return self.dense(concat)
 
 # ---------------------------
-# Transformer Block and Classifier Builder (unchanged)
+# Transformer Block and Classifier Builder (with share_EF)
 # ---------------------------
 class LinformerTransformerBlock(layers.Layer):
     def __init__(self, d_model, d_ff, output_dim, num_heads, proj_dim,
-                 cluster_E=False, cluster_F=False,
+                 cluster_E=False, cluster_F=False, share_EF=False,
                  convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, **kwargs):
         super().__init__(**kwargs)
         self.attn = ClusteredLinformerAttention(
             d_model, num_heads, proj_dim,
-            cluster_E, cluster_F,
+            cluster_E, cluster_F, share_EF,
             convolution, conv_filter_heights, vertical_stride)
         self.act1 = DynamicTanh()
         self.act2 = DynamicTanh()
@@ -232,13 +227,13 @@ def build_linformer_transformer_classifier(
     num_particles, feature_dim,
     d_model=16, d_ff=16, output_dim=16,
     num_heads=4, proj_dim=4,
-    cluster_E=False, cluster_F=False,
+    cluster_E=False, cluster_F=False, share_EF=False,
     convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1):
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation='relu')(inputs)
     x = LinformerTransformerBlock(
         d_model, d_ff, output_dim, num_heads, proj_dim,
-        cluster_E, cluster_F,
+        cluster_E, cluster_F, share_EF,
         convolution, conv_filter_heights, vertical_stride)(x)
     x = AggregationLayer('max')(x)
     x = layers.Dense(d_model, activation='relu')(x)
