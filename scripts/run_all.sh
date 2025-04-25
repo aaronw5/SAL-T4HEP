@@ -55,6 +55,7 @@ if [[ -z "$DATA_DIR" || -z "$SAVE_DIR" || -z "$BATCH_SIZE" || -z "$NUM_EPOCHS" \
   echo "Missing required arguments."; usage
 fi
 
+
 # Loop over particles & sort
 # Allow list of particles and sorts via comma-separated
 IFS=',' read -ra PARTICLES <<< "${NP_LIST:-16,32,150}"
