@@ -176,7 +176,7 @@ def main():
 
     current_epoch = 0
     all_histories = []
-    callbacks  = [early_stop, ckpt]
+    callbacks  = [ckpt]
 
     for bs, ne in schedule:
         tf.keras.backend.set_value(model.optimizer.lr, 1e-3)
