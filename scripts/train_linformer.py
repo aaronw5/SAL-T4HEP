@@ -152,7 +152,7 @@ def main():
         output_dim=args.output_dim, num_heads=args.num_heads,
         proj_dim=args.proj_dim, cluster_E=args.cluster_E,
         cluster_F=args.cluster_F, share_EF=args.share_EF,
-        convolution=args.convolution, conv_filter_heights=[1,3,5],
+        convolution=args.convolution, conv_filter_heights=[1,2, 3,4,5,6,7,6,9,10,11,12,13,14,15,16],
         vertical_stride=1)
     model.compile(optimizer=tf.keras.optimizers.Adam(),
                   loss="categorical_crossentropy", metrics=["accuracy"])
@@ -170,13 +170,13 @@ def main():
     early_stop = EarlyStopping(monitor="val_loss", patience=40,
                                restore_best_weights=True, verbose=1)
     schedule = [
-        (128,  200), (256,  200), (512,  200),
+        (128,  100), (256,  100), (512,  100),
         (1024, 200), (2048, 200), (4096, 400),
     ]
 
     current_epoch = 0
     all_histories = []
-    callbacks  = [ckpt]
+    callbacks  = [early_stop, ckpt]
 
     for bs, ne in schedule:
         tf.keras.backend.set_value(model.optimizer.lr, 1e-3)
