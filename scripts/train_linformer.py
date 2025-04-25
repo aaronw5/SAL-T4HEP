@@ -167,7 +167,7 @@ def main():
     
     ckpt       = ModelCheckpoint(os.path.join(save_dir, "best.weights.h5"),
                                  monitor="val_loss", save_best_only=True, verbose=1)
-    early_stop = EarlyStopping(monitor="val_loss", patience=40,
+    early_stop = EarlyStopping(monitor="val_loss", patience=80,
                                restore_best_weights=True, verbose=1)
     schedule = [
         (128,  100), (256,  100), (512,  100),
