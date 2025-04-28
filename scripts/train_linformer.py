@@ -170,7 +170,7 @@ def main():
     early_stop = EarlyStopping(monitor="val_loss", patience=80,
                                restore_best_weights=True, verbose=1)
     schedule = [
-        (128,  100), (256,  100), (512,  100),
+        (128,  200), (256,  200), (512,  200),
         (1024, 200), (2048, 200), (4096, 400),
     ]
 
