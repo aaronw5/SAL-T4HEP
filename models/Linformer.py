@@ -21,24 +21,14 @@ class AggregationLayer(layers.Layer):
         else:
             raise ValueError("Given aggregation string is not implemented. Use 'mean' or 'max'.")
 
-# ---------------------------
-# Attention Convolution Layer (unchanged)
-# ---------------------------
+
 class AttentionConvLayer(layers.Layer):
-    """
-    Applies one or more 2D convolutions on the attention scores (before softmax)
-    with different filter heights. Each convolution uses a kernel whose width exactly
-    matches the attention matrix’s width (proj_dim) so that the filter only moves
-    along the sequence (vertical) direction.
-    
-    A new parameter, vertical_stride, enables you to change the stride along the vertical dimension.
-    When vertical_stride > 1, the output is upsampled back to the original sequence length.
-    """
+
     def __init__(self, filter_heights=[1], vertical_stride=1, **kwargs):
         super(AttentionConvLayer, self).__init__(**kwargs)
         self.filter_heights = filter_heights
         self.vertical_stride = vertical_stride
-        self.conv_layers = []  # Will be instantiated in build()
+        self.conv_layers = [] 
 
     def build(self, input_shape):
         self.proj_dim = input_shape[-1]
@@ -91,9 +81,7 @@ class DynamicTanh(layers.Layer):
     def call(self, inputs):
         return tf.math.tanh(self.alpha * inputs + self.beta)
 
-# ---------------------------
-# Clustered Linformer Attention (with share_EF support)
-# ---------------------------
+
 class ClusteredLinformerAttention(layers.Layer):
     def __init__(
         self,
@@ -197,9 +185,7 @@ class ClusteredLinformerAttention(layers.Layer):
         concat = tf.reshape(attn_out, (batch, -1, self.d_model))
         return self.dense(concat)
 
-# ---------------------------
-# Transformer Block and Classifier Builder (with share_EF)
-# ---------------------------
+
 class LinformerTransformerBlock(layers.Layer):
     def __init__(self, d_model, d_ff, output_dim, num_heads, proj_dim,
                  cluster_E=False, cluster_F=False, share_EF=False,
