@@ -210,14 +210,16 @@ def main():
     callbacks = [early_stop, ckpt]
 
     # Training schedule
-    schedule = [
-        (128, 200),
-        (256, 200),
-        (512, 200),
-        (1024, 200),
-        (2048, 200),
-        (4096, 400),
-    ]
+    # schedule = [
+    #     (128, 200),
+    #     (256, 200),
+    #     (512, 200),
+    #     (1024, 200),
+    #     (2048, 200),
+    #     (4096, 400),
+    # ]
+
+    schedule = [(2048, 1400)]
 
     current_epoch = 0
     all_histories = []
