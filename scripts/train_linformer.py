@@ -256,9 +256,9 @@ def main():
     logging.info('Validation Accuracy: %.4f, ROC AUC: %.4f', val_acc, overall_auc)
     print(f'Val Acc: {val_acc:.4f}, ROC AUC: {overall_auc:.4f}')
 
-    # ROC curves & one-over-FPR
-    class_labels = ['g','q','W','Z','t']
-    plt.figure(figsize=(6,6))
+    class_labels = ['g', 'q', 'W', 'Z', 't']
+
+    plt.figure(figsize=(6, 6))
     one_over_fpr = {}
     for i, label in enumerate(class_labels):
         fpr_vals, tpr_vals, _ = roc_curve(y_val[:, i], preds[:, i])
@@ -268,25 +268,32 @@ def main():
             fpr_t = np.interp(0.8, tpr_vals, fpr_vals)
             one_over_fpr[label] = 1.0 / fpr_t if fpr_t > 0 else np.nan
             plt.plot(fpr_t, 0.8, 'o')
-    plt.plot([0,1], [0,1], 'k--')
-    plt.xlabel('FPR'); plt.ylabel('TPR'); plt.legend(); plt.title('ROC curves')
-    plt.tight_layout(); plt.savefig(os.path.join(save_dir, 'roc_curves.png')); plt.close()
+    plt.plot([0, 1], [0, 1], 'k--')
+    plt.xlabel('FPR'); plt.ylabel('TPR'); plt.legend(loc='lower right')
+    plt.title('ROC curves'); plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'roc_curves.png')); plt.close()
+    for label, val in one_over_fpr.items():
+        logging.info('1/FPR @0.8 TPR for %s: %.3f', label, val)
 
-    # Background rejection logging
-    scores = preds[:, 1:] / (preds[:, :1] + preds[:, 1:])
-    scores = np.concatenate([preds[:, :1], scores], axis=1)
+    bg_sum = preds[:, :2].sum(axis=1, keepdims=True)
+    scores = np.concatenate([
+        preds[:, :2],  
+        preds[:, 2:] / (bg_sum + preds[:, 2:])
+    ], axis=1)
+
     rej_list = []
-    for i, label in enumerate(class_labels[1:], start=1):
-        mask = (y_val[:, 0] == 1) | (y_val[:, i] == 1)
+    for i, label in enumerate(class_labels[2:], start=2):
+        mask = (y_val[:, 0] == 1) | (y_val[:, 1] == 1) | (y_val[:, i] == 1)
+
         bin_y = (y_val[mask, i] == 1).astype(int)
         bin_s = scores[mask, i]
+
         fpr_vals, tpr_vals, _ = roc_curve(bin_y, bin_s)
         idx = np.argmin(np.abs(tpr_vals - 0.8))
         rej = 1.0 / fpr_vals[idx] if fpr_vals[idx] > 0 else np.inf
         logging.info('Background rejection @0.8 for %s: %.3f', label, rej)
         rej_list.append(rej)
+
     avg_rej = np.nanmean(rej_list)
     logging.info('Average background rejection @0.8 TPR: %.3f', avg_rej)
 
-if __name__ == "__main__":
-    main()
