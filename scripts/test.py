@@ -126,13 +126,18 @@ def process_directory(
     # determine model path
     model_path = os.path.join(save_dir, "best.weights.h5")
 
-    # Set up logging
-    logging.basicConfig(
-        filename=os.path.join(save_dir, "train.log"),
-        filemode="w",
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(message)s",
+    # Set up logging to append to the existing train.log
+    log_file = os.path.join(save_dir, "train.log")
+    file_handler = logging.FileHandler(log_file, mode="a")
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(message)s")
     )
+
+    # Get the root logger and add our file handler
+    logger = logging.getLogger()
+    logger.setLevel(logging.INFO)
+    logger.addHandler(file_handler)
+
     logging.info("Loading model from %s", model_path)
 
     # load full model with custom objects
@@ -234,6 +239,10 @@ def process_directory(
         logging.info("Background rejection @0.8 for %s: %.3f", label, rej)
         rej_list.append(rej)
     logging.info("Avg background rejection @0.8: %.3f", np.nanmean(rej_list))
+
+    # Remove the file handler to prevent duplicate logging
+    logger.removeHandler(file_handler)
+    file_handler.close()
 
 
 def main():
