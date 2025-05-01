@@ -41,9 +41,16 @@ find "$ROOT_DIR" -type d | while read -r dir; do
             has_train_log=true
         fi
         
-        if [ "$has_loss_curve" = false ] || [ "$has_train_log" = false ]; then
-            echo "Removing incomplete run: $dir"
-            rm -rf "$dir"
+        if [ "$has_loss_curve" = false ] && [ "$has_train_log" = false ]; then
+            echo "Found incomplete run: $dir"
+            read -p "Remove this directory? [y/N] " -n 1 -r
+            echo
+            if [[ $REPLY =~ ^[Yy]$ ]]; then
+                echo "Removing: $dir"
+                rm -r "$dir"
+            else
+                echo "Skipping: $dir"
+            fi
         fi
     fi
 done
