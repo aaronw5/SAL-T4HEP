@@ -29,6 +29,7 @@ from models.Linformer import (
     ClusteredLinformerAttention,
     LinformerTransformerBlock,
 )
+from models.Transformer import StandardTransformerBlock
 
 
 def profile_gpu_memory_during_inference(
@@ -141,6 +142,7 @@ def process_directory(
         "DynamicTanh": DynamicTanh,
         "ClusteredLinformerAttention": ClusteredLinformerAttention,
         "LinformerTransformerBlock": LinformerTransformerBlock,
+        "StandardTransformerBlock": StandardTransformerBlock,
     }
     model = load_model(model_path, custom_objects=custom_objs)
     logging.info("Model loaded successfully.")
