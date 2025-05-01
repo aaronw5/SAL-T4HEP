@@ -464,15 +464,15 @@ def main():
     logging.info("Average background rejection @0.8 TPR: %.3f", avg_rej)
 
     # Run testing on the trained model
-    run_testing(
-        model=model,
-        data_dir=args.data_dir,
-        save_dir=save_dir,
-        sort_by=args.sort_by,
-        batch_size=args.batch_size,
-        cluster_R=args.cluster_R,
-        cluster_batch_size=args.cluster_batch_size,
-    )
+    # run_testing(
+    #     model=model,
+    #     data_dir=args.data_dir,
+    #     save_dir=save_dir,
+    #     sort_by=args.sort_by,
+    #     batch_size=args.batch_size,
+    #     cluster_R=args.cluster_R,
+    #     cluster_batch_size=args.cluster_batch_size,
+    # )
 
 
 if __name__ == "__main__":
