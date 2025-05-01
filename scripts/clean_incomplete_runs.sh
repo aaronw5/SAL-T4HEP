@@ -27,8 +27,8 @@ fi
 
 echo "Scanning for incomplete runs in $ROOT_DIR..."
 
-# Find all directories that don't have both required files
-find "$ROOT_DIR" -type d | while read -r dir; do
+# Find all trial directories that don't have both required files
+find "$ROOT_DIR" -type d -name "trial-*" | while read -r dir; do
     if [ -d "$dir" ]; then
         has_loss_curve=false
         has_train_log=false
@@ -43,9 +43,9 @@ find "$ROOT_DIR" -type d | while read -r dir; do
         
         if [ "$has_loss_curve" = false ] && [ "$has_train_log" = false ]; then
             echo "Found incomplete run: $dir"
-            read -p "Remove this directory? [y/N] " -n 1 -r
-            echo
-            if [[ $REPLY =~ ^[Yy]$ ]]; then
+            echo -n "Remove this directory? [y/N] "
+            read -r response
+            if [[ "$response" =~ ^[Yy]$ ]]; then
                 echo "Removing: $dir"
                 rm -r "$dir"
             else
