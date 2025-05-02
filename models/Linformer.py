@@ -1,5 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import layers, Model
+import numpy as np
 
 # ---------------------------
 # Aggregation Layer (unchanged)
@@ -123,37 +124,118 @@ class ClusteredLinformerAttention(layers.Layer):
 
     def build(self, input_shape):
         self.seq_len = input_shape[1]
-        # Q,K,V weights
-        self.wq = self.add_weight(name='wq', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
-        self.wk = self.add_weight(name='wk', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
-        self.wv = self.add_weight(name='wv', shape=(self.d_model, self.d_model), initializer='glorot_uniform', trainable=True)
-        self.chunk_size_F = (self.seq_len + self.proj_dim - 1) // self.proj_dim
-        self.chunk_size_E = (self.seq_len + self.proj_dim - 1) // self.proj_dim
 
-        # E and F projections (optionally shared)
+        # Q/K/V weight matrices
+        self.wq = self.add_weight('wq', shape=(self.d_model, self.d_model),
+                                  initializer='glorot_uniform', trainable=True)
+        self.wk = self.add_weight('wk', shape=(self.d_model, self.d_model),
+                                  initializer='glorot_uniform', trainable=True)
+        self.wv = self.add_weight('wv', shape=(self.d_model, self.d_model),
+                                  initializer='glorot_uniform', trainable=True)
+
+        # unified chunk size for both E and F
+        self.chunk_size = (self.seq_len + self.proj_dim - 1) // self.proj_dim
+
+        # E projection weights
         if not self.cluster_E:
-            # create E
-            self.E = self.add_weight(name='proj_E', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
+            self.E = self.add_weight('proj_E',
+                                     shape=(self.num_heads, self.seq_len, self.proj_dim),
+                                     initializer='glorot_uniform', trainable=True)
         else:
-            self.cluster_E_W = self.add_weight(name='cluster_E_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_E), initializer='glorot_uniform', trainable=True)
+            self.cluster_E_W = self.add_weight('cluster_E_W',
+                                               shape=(self.num_heads, self.proj_dim, self.chunk_size),
+                                               initializer='glorot_uniform', trainable=True)
 
+        # F projection weights (or share E)
         if self.share_EF:
-            # share E and F
             if self.cluster_E:
                 self.cluster_F_W = self.cluster_E_W
             else:
                 self.F = self.E
         else:
             if not self.cluster_F:
-                self.F = self.add_weight(name='proj_F', shape=(self.num_heads, self.seq_len, self.proj_dim), initializer='glorot_uniform', trainable=True)
+                self.F = self.add_weight('proj_F',
+                                         shape=(self.num_heads, self.seq_len, self.proj_dim),
+                                         initializer='glorot_uniform', trainable=True)
             else:
-                self.cluster_F_W = self.add_weight(name='cluster_F_W', shape=(self.num_heads, self.proj_dim, self.chunk_size_F), initializer='glorot_uniform', trainable=True)
+                self.cluster_F_W = self.add_weight('cluster_F_W',
+                                                   shape=(self.num_heads, self.proj_dim, self.chunk_size),
+                                                   initializer='glorot_uniform', trainable=True)
 
         if self.convolution:
             self.attn_conv = AttentionConvLayer(self.conv_filter_heights, self.vertical_stride)
 
         self.dense = layers.Dense(self.d_model)
+
+        # ⮕ CHANGED: Precompute a lookup table of indices for all possible real-token counts R=1..seq_len
+        table = np.zeros((self.seq_len, self.proj_dim, self.chunk_size), dtype=np.int32)
+        for R in range(1, self.seq_len + 1):
+            # Assign the first R positions into proj_dim clusters evenly
+            assign = np.floor(np.arange(R) * self.proj_dim / R).astype(np.int32)
+            assign = np.minimum(assign, self.proj_dim - 1)
+            # For each cluster, gather its indices and pad with R (we will pad k/v at position seq_len)
+            for c in range(self.proj_dim):
+                idxs = np.where(assign == c)[0]
+                pad_len = self.chunk_size - len(idxs)
+                if pad_len > 0:
+                    idxs = np.concatenate([idxs, np.full(pad_len, R, dtype=np.int32)])
+                table[R-1, c, :] = idxs
+        self.cluster_pos_idxs = tf.constant(table, dtype=tf.int32)  # shape=(seq_len, P, chunk_size)
         super().build(input_shape)
+
+    # def _cluster_chunks(self, x, mask):
+    #     """
+    #     dynamic per-jet clustering based on mask
+    #     x: Tensor(shape=[batch, heads, seq_len, depth])
+    #     mask: Tensor(shape=[batch, seq_len], dtype=bool)
+    #     returns: Tensor(shape=[batch, heads, proj_dim, chunk_size, depth])
+    #     """
+    #     batch = tf.shape(x)[0]
+    #     heads = tf.shape(x)[1]
+    #     seq_len = self.seq_len
+    #     depth = self.depth
+    #     P = self.proj_dim
+    #     chunk_size = self.chunk_size_E
+
+    #     # 1) count real tokens per sequence
+    #     real_counts = tf.reduce_sum(tf.cast(mask, tf.int32), axis=1)
+    #     real_counts = tf.maximum(real_counts, 1)  # avoid division by zero
+
+    #     # 2) assign positions to cluster indices [0..P-1]
+    #     positions = tf.tile(tf.range(seq_len)[None, :], [batch, 1])
+    #     cluster_idx = tf.cast(
+    #         tf.math.floor(
+    #             tf.cast(positions, tf.float32) * tf.cast(P, tf.float32)
+    #             / tf.cast(real_counts[:, None], tf.float32)
+    #         ),
+    #         tf.int32
+    #     )
+    #     cluster_idx = tf.minimum(cluster_idx, P - 1)
+
+    #     # 3) flatten batch & heads for per-head processing
+    #     x_t    = tf.transpose(x, [0, 2, 1, 3])                       # (batch, seq_len, heads, depth)
+    #     x_flat = tf.reshape(x_t, [-1, seq_len, depth])               # (B*H, seq_len, depth)
+    #     mask_f = tf.reshape(tf.tile(mask[:, None, :], [1, heads, 1]), [-1, seq_len])
+    #     idx_f  = tf.reshape(tf.tile(cluster_idx[:, None, :], [1, heads, 1]), [-1, seq_len])
+
+    #     def gather_chunks(args):
+    #         row_x, row_mask, row_idx = args
+    #         chunks = []
+    #         for c in range(P):
+    #             # select real tokens in this cluster
+    #             sel = tf.boolean_mask(row_x, tf.logical_and(row_mask, row_idx == c))
+    #             pad_len = chunk_size - tf.shape(sel)[0]
+    #             sel = tf.pad(sel, [[0, pad_len], [0, 0]])
+    #             chunks.append(sel)
+    #         return tf.stack(chunks, axis=0)  # (P, chunk_size, depth)
+
+    #     chunks_flat = tf.map_fn(
+    #         gather_chunks,
+    #         (x_flat, mask_f, idx_f),
+    #         fn_output_signature=tf.float32
+    #     )  # (B*H, P, chunk_size, depth)
+
+    #     return tf.reshape(chunks_flat, [batch, heads, P, chunk_size, depth])
 
     def split_heads(self, x, batch_size):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
@@ -166,31 +248,51 @@ class ClusteredLinformerAttention(layers.Layer):
               where False indicates padding positions.
         """
         batch = tf.shape(x)[0]
+
+        # 1) Linear Q/K/V
         q = tf.matmul(x, self.wq)
         k = tf.matmul(x, self.wk)
         v = tf.matmul(x, self.wv)
+
+        # 2) Split heads
         q = self.split_heads(q, batch)
         k = self.split_heads(k, batch)
         v = self.split_heads(v, batch)
 
-        # key projection
+        # 3) Append one zero-vector at seq_len for padding-index
+        k = tf.pad(k, [[0,0],[0,0],[0,1],[0,0]])  # ⮕ CHANGED
+        v = tf.pad(v, [[0,0],[0,0],[0,1],[0,0]])  # ⮕ CHANGED
+
+        # 4) Compute number of real tokens R per sequence
+        real_counts = tf.reduce_sum(tf.cast(mask, tf.int32), axis=1)      # (batch,)
+        real_counts = tf.clip_by_value(real_counts, 1, self.seq_len)
+
+        # 5) Gather the appropriate index slice for each R
+        #    pos_idx: (batch, proj_dim, chunk_size)
+        pos_idx = tf.gather(self.cluster_pos_idxs, real_counts - 1)      # ⮕ CHANGED
+
+        # 6) Expand to heads and gather k/v
+        #    shape => (batch, heads, proj_dim, chunk_size)
+        pos_idx = tf.expand_dims(pos_idx, axis=1)                        # (batch,1,P,chunk)
+        pos_idx = tf.tile(pos_idx, [1, self.num_heads, 1, 1])            # ⮕ CHANGED
+
+        #    Now gather along seq_len axis (axis=2), preserving batch and heads
+        #    Resulting shape: (batch, heads, proj_dim, chunk_size, depth)
+        k_chunks = tf.gather(k, pos_idx, axis=2, batch_dims=2)           # ⮕ CHANGED
+        v_chunks = tf.gather(v, pos_idx, axis=2, batch_dims=2)           # ⮕ CHANGED
+
+        # 7) Linformer projection on each chunk
         if not self.cluster_E:
             k_proj = tf.einsum('bhnd,hnr->bhrd', k, self.E)
         else:
-            pad_k = self.chunk_size_E * self.proj_dim - self.seq_len
-            k_p = tf.pad(k, [[0,0],[0,0],[0,pad_k],[0,0]])
-            k_chunks = tf.reshape(k_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_E, self.depth))
-            k_proj = tf.einsum('bhcld,hcl->bhcd', k_chunks, self.cluster_E_W)
+            k_proj = tf.einsum('bhcld,hcl->bhcd', k_chunks, self.cluster_E_W)  # ⮕ CHANGED
 
-        # value projection
         if not self.cluster_F:
             v_proj = tf.einsum('bhnd,hnr->bhrd', v, self.F)
         else:
-            pad_v = self.chunk_size_F * self.proj_dim - self.seq_len
-            v_p = tf.pad(v, [[0,0],[0,0],[0,pad_v],[0,0]])
-            v_chunks = tf.reshape(v_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_F, self.depth))
-            v_proj = tf.einsum('bhcld,hcl->bhcd', v_chunks, self.cluster_F_W)
+            v_proj = tf.einsum('bhcld,hcl->bhcd', v_chunks, self.cluster_F_W)  # ⮕ CHANGED
 
+        # 8) Scaled dot-product
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
         if mask is not None:
