@@ -49,6 +49,128 @@ def get_flops(model, input_shape):
         return flops.total_float_ops
 
 
+def profile_gpu_memory_during_inference(
+    model: tf.keras.Model,
+    input_data: np.ndarray,
+) -> tuple[float, float]:
+    """
+    Runs one forward pass in @tf.function and returns
+    (current_gpu_mb, peak_gpu_mb) allocated during that call.
+    """
+    # reset stats so we get a fresh peak measurement
+    tf.config.experimental.reset_memory_stats("GPU:0")
+
+    @tf.function
+    def infer(x):
+        return model(x, training=False)
+
+    # warm-up to allocate buffers
+    _ = infer(input_data[:1])
+    # actual profiling
+    _ = infer(input_data)
+
+    mem = tf.config.experimental.get_memory_info("GPU:0")
+    current_mb = mem["current"] / (1024**2)
+    peak_mb = mem["peak"] / (1024**2)
+    return current_mb, peak_mb
+
+
+def run_testing(
+    model,
+    data_dir,
+    save_dir,
+    sort_by,
+    batch_size,
+    cluster_R=0.4,
+    cluster_batch_size=1024,
+):
+    """Run testing on the trained model"""
+    logging.info("Starting testing phase...")
+
+    # Load and sort test data
+    num_particles = model.input_shape[1]
+    feat_dim = model.input_shape[2]
+    x_file = f"x_val_robust_{num_particles}const_ptetaphi.npy"
+    y_file = f"y_val_robust_{num_particles}const_ptetaphi.npy"
+    x = np.load(os.path.join(data_dir, x_file))
+    y = np.load(os.path.join(data_dir, y_file))
+    logging.info("Loaded TEST arrays: %s, %s", x_file, y_file)
+
+    x = apply_sorting(x, sort_by, cluster_R, cluster_batch_size)
+    logging.info("Applied '%s' sorting to TEST set", sort_by)
+
+    # FLOPs & timing
+    flops = get_flops(model, [1, num_particles, feat_dim])
+    macs = flops // 2
+    logging.info("FLOPs per inference: %d", flops)
+    logging.info("MACs per inference: %d", macs)
+
+    # inference timing
+    _ = model.predict(x[:batch_size], batch_size=batch_size)
+    times = []
+    for _ in range(20):
+        t0 = time.perf_counter()
+        _ = model.predict(x[:batch_size], batch_size=batch_size)
+        times.append(time.perf_counter() - t0)
+    avg_ns = np.mean(times) / batch_size * 1e9
+    logging.info("Avg inference time / event: %.2f ns", avg_ns)
+
+    # Profile GPU memory usage
+    current_gpu_mb, peak_gpu_mb = profile_gpu_memory_during_inference(
+        model, x[:batch_size]
+    )
+    logging.info(
+        "GPU memory — current: %.1f MB, peak: %.1f MB", current_gpu_mb, peak_gpu_mb
+    )
+
+    # Predictions & metrics
+    preds = model.predict(x, batch_size=batch_size)
+    acc = accuracy_score(np.argmax(y, 1), np.argmax(preds, 1))
+    auc_m = roc_auc_score(y, preds, average="macro", multi_class="ovo")
+    logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
+
+    # ROC curves + background rejection
+    class_labels = ["g", "q", "W", "Z", "t"]
+    plt.figure(figsize=(6, 6))
+    one_over_fpr = {}
+    for i, label in enumerate(class_labels):
+        fpr_vals, tpr_vals, _ = roc_curve(y[:, i], preds[:, i])
+        roc_auc_val = auc(fpr_vals, tpr_vals)
+        logging.info("ROC AUC for %s: %.4f", label, roc_auc_val)
+        plt.plot(fpr_vals, tpr_vals, label=f"{label} (AUC={roc_auc_val:.2f})")
+        if np.max(tpr_vals) >= 0.8:
+            fpr_t = np.interp(0.8, tpr_vals, fpr_vals)
+            one_over_fpr[label] = 1.0 / fpr_t if fpr_t > 0 else np.nan
+            plt.plot(fpr_t, 0.8, "o")
+    plt.plot([0, 1], [0, 1], "k--")
+    plt.xlabel("FPR")
+    plt.ylabel("TPR")
+    plt.title("ROC curves")
+    plt.legend(loc="lower right")
+    plt.tight_layout()
+    roc_path = os.path.join(save_dir, "roc_curves.png")
+    plt.savefig(roc_path)
+    plt.close()
+
+    for label, val in one_over_fpr.items():
+        logging.info("1/FPR @0.8 TPR for %s: %.3f", label, val)
+    avg_one_over = np.nanmean(list(one_over_fpr.values()))
+    logging.info("Avg 1/FPR @0.8 TPR: %.3f", avg_one_over)
+
+    # Updated background rejection: background = g AND q for all classes
+    rej_list = []
+    for i, label in enumerate(class_labels[1:], start=1):
+        mask = (y[:, 0] == 1) | (y[:, 1] == 1) | (y[:, i] == 1)
+        bin_y = (y[mask, i] == 1).astype(int)
+        bin_s = preds[mask, i]
+        fpr_vals, tpr_vals, _ = roc_curve(bin_y, bin_s)
+        idx = np.argmin(np.abs(tpr_vals - 0.8))
+        rej = 1.0 / fpr_vals[idx] if fpr_vals[idx] > 0 else np.inf
+        logging.info("Background rejection @0.8 for %s: %.3f", label, rej)
+        rej_list.append(rej)
+    logging.info("Avg background rejection @0.8: %.3f", np.nanmean(rej_list))
+
+
 def parse_args():
     p = argparse.ArgumentParser(
         description="Train a Linformer on jet data with sorting reuse"
@@ -199,19 +321,16 @@ def main():
     callbacks = [ckpt]
 
     mask_train = tf.reduce_any(x_train != 0.0, axis=-1)  # (n,150) bool
-    mask_val   = tf.reduce_any(x_val   != 0.0, axis=-1)
+    mask_val = tf.reduce_any(x_val != 0.0, axis=-1)
     for bs, ne in schedule:
         tf.keras.backend.set_value(model.optimizer.lr, 1e-3)
         start = current_epoch
         stop = current_epoch + ne
         print(f"\n--- Training epochs {start}→{stop} with batch_size={bs} ---")
         hist = model.fit(
-            [x_train, mask_train],            # <-- features + mask
+            [x_train, mask_train],  # <-- features + mask
             y_train,
-            validation_data=(
-                [x_val,   mask_val],          # <-- features + mask
-                y_val
-            ),
+            validation_data=([x_val, mask_val], y_val),  # <-- features + mask
             initial_epoch=start,
             epochs=stop,
             batch_size=bs,
@@ -344,6 +463,16 @@ def main():
         rej_list.append(rej)
     avg_rej = np.nanmean(rej_list)
     logging.info("Average background rejection @0.8 TPR: %.3f", avg_rej)
+
+    run_testing(
+        model=model,
+        data_dir=args.data_dir,
+        save_dir=save_dir,
+        sort_by=args.sort_by,
+        batch_size=args.batch_size,
+        cluster_R=args.cluster_R,
+        cluster_batch_size=args.cluster_batch_size,
+    )
 
 
 if __name__ == "__main__":
