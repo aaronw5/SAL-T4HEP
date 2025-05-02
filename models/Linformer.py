@@ -159,7 +159,12 @@ class ClusteredLinformerAttention(layers.Layer):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, [0, 2, 1, 3])
 
-    def call(self, x):
+    def call(self, x, mask=None):
+        """
+        x: Tensor of shape (batch, seq_len, d_model)
+        mask: (optional) boolean Tensor of shape (batch, seq_len),
+              where False indicates padding positions.
+        """
         batch = tf.shape(x)[0]
         q = tf.matmul(x, self.wq)
         k = tf.matmul(x, self.wk)
@@ -188,6 +193,11 @@ class ClusteredLinformerAttention(layers.Layer):
 
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
+        if mask is not None:
+            # mask: (batch, seq_len) -> (batch, 1, 1, seq_len)
+            key_mask = tf.cast(mask[:, tf.newaxis, tf.newaxis, :], scores.dtype)
+            scores += (1.0 - key_mask) * -1e9
+            
         if self.convolution:
             scores = self.attn_conv(scores)
         weights = tf.nn.softmax(scores, axis=-1)
@@ -216,8 +226,8 @@ class LinformerTransformerBlock(layers.Layer):
             layers.Dense(d_model)
         ])
 
-    def call(self, x):
-        attn_out = self.attn(x)
+    def call(self, x, mask=None):
+        attn_out = self.attn(x, mask)
         out1 = self.act1(x + attn_out)
         ffn_out = self.ffn(out1)
         return self.act2(out1 + ffn_out)
@@ -229,13 +239,21 @@ def build_linformer_transformer_classifier(
     num_heads=4, proj_dim=4,
     cluster_E=False, cluster_F=False, share_EF=False,
     convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1):
-    inputs = layers.Input((num_particles, feature_dim))
+    # feature input
+    inputs     = layers.Input((num_particles, feature_dim))
+    # padding mask input
+    mask_input = layers.Input((num_particles,), dtype=tf.bool)
+
     x = layers.Dense(d_model, activation='relu')(inputs)
     x = LinformerTransformerBlock(
         d_model, d_ff, output_dim, num_heads, proj_dim,
         cluster_E, cluster_F, share_EF,
-        convolution, conv_filter_heights, vertical_stride)(x)
+        convolution, conv_filter_heights, vertical_stride
+    )(x, mask=mask_input)
+
     x = AggregationLayer('max')(x)
     x = layers.Dense(d_model, activation='relu')(x)
     outputs = layers.Dense(5, activation='softmax')(x)
-    return Model(inputs, outputs)
+
+    return Model([inputs, mask_input], outputs)
+

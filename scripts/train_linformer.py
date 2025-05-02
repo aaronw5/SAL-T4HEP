@@ -198,15 +198,20 @@ def main():
     all_histories = []
     callbacks = [ckpt]
 
+    mask_train = tf.reduce_any(x_train != 0.0, axis=-1)  # (n,150) bool
+    mask_val   = tf.reduce_any(x_val   != 0.0, axis=-1)
     for bs, ne in schedule:
         tf.keras.backend.set_value(model.optimizer.lr, 1e-3)
         start = current_epoch
         stop = current_epoch + ne
         print(f"\n--- Training epochs {start}→{stop} with batch_size={bs} ---")
         hist = model.fit(
-            x_train,
+            [x_train, mask_train],            # <-- features + mask
             y_train,
-            validation_data=(x_val, y_val),
+            validation_data=(
+                [x_val,   mask_val],          # <-- features + mask
+                y_val
+            ),
             initial_epoch=start,
             epochs=stop,
             batch_size=bs,
