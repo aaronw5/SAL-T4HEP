@@ -183,60 +183,6 @@ class ClusteredLinformerAttention(layers.Layer):
         self.cluster_pos_idxs = tf.constant(table, dtype=tf.int32)  # shape=(seq_len, P, chunk_size)
         super().build(input_shape)
 
-    # def _cluster_chunks(self, x, mask):
-    #     """
-    #     dynamic per-jet clustering based on mask
-    #     x: Tensor(shape=[batch, heads, seq_len, depth])
-    #     mask: Tensor(shape=[batch, seq_len], dtype=bool)
-    #     returns: Tensor(shape=[batch, heads, proj_dim, chunk_size, depth])
-    #     """
-    #     batch = tf.shape(x)[0]
-    #     heads = tf.shape(x)[1]
-    #     seq_len = self.seq_len
-    #     depth = self.depth
-    #     P = self.proj_dim
-    #     chunk_size = self.chunk_size_E
-
-    #     # 1) count real tokens per sequence
-    #     real_counts = tf.reduce_sum(tf.cast(mask, tf.int32), axis=1)
-    #     real_counts = tf.maximum(real_counts, 1)  # avoid division by zero
-
-    #     # 2) assign positions to cluster indices [0..P-1]
-    #     positions = tf.tile(tf.range(seq_len)[None, :], [batch, 1])
-    #     cluster_idx = tf.cast(
-    #         tf.math.floor(
-    #             tf.cast(positions, tf.float32) * tf.cast(P, tf.float32)
-    #             / tf.cast(real_counts[:, None], tf.float32)
-    #         ),
-    #         tf.int32
-    #     )
-    #     cluster_idx = tf.minimum(cluster_idx, P - 1)
-
-    #     # 3) flatten batch & heads for per-head processing
-    #     x_t    = tf.transpose(x, [0, 2, 1, 3])                       # (batch, seq_len, heads, depth)
-    #     x_flat = tf.reshape(x_t, [-1, seq_len, depth])               # (B*H, seq_len, depth)
-    #     mask_f = tf.reshape(tf.tile(mask[:, None, :], [1, heads, 1]), [-1, seq_len])
-    #     idx_f  = tf.reshape(tf.tile(cluster_idx[:, None, :], [1, heads, 1]), [-1, seq_len])
-
-    #     def gather_chunks(args):
-    #         row_x, row_mask, row_idx = args
-    #         chunks = []
-    #         for c in range(P):
-    #             # select real tokens in this cluster
-    #             sel = tf.boolean_mask(row_x, tf.logical_and(row_mask, row_idx == c))
-    #             pad_len = chunk_size - tf.shape(sel)[0]
-    #             sel = tf.pad(sel, [[0, pad_len], [0, 0]])
-    #             chunks.append(sel)
-    #         return tf.stack(chunks, axis=0)  # (P, chunk_size, depth)
-
-    #     chunks_flat = tf.map_fn(
-    #         gather_chunks,
-    #         (x_flat, mask_f, idx_f),
-    #         fn_output_signature=tf.float32
-    #     )  # (B*H, P, chunk_size, depth)
-
-    #     return tf.reshape(chunks_flat, [batch, heads, P, chunk_size, depth])
-
     def split_heads(self, x, batch_size):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, [0, 2, 1, 3])
