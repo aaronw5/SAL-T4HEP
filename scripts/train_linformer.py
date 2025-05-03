@@ -29,52 +29,90 @@ from models.Linformer import (
     LinformerTransformerBlock,
     build_linformer_transformer_classifier,
 )
+import tensorflow as tf
+import numpy as np
 
+def get_flops(model, input_shapes):
+    """
+    Computes FLOPs for a 2-input model.
 
-def get_flops(model, input_shape):
+    Args:
+      model: tf.keras.Model expecting [features, mask]
+      input_shapes: [
+         (1, seq_len, feat_dim),  # features shape
+         (1, seq_len)             # mask shape
+      ]
+    """
     from tensorflow.python.framework.convert_to_constants import (
         convert_variables_to_constants_v2_as_graph,
     )
 
-    input_tensor = tf.TensorSpec(input_shape, tf.float32)
-    concrete_func = tf.function(model).get_concrete_function(input_tensor)
-    frozen_func, graph_def = convert_variables_to_constants_v2_as_graph(concrete_func)
-    with tf.Graph().as_default() as graph:
-        tf.compat.v1.import_graph_def(graph_def, name="")
+    # 1) build specs for each input
+    spec_x   = tf.TensorSpec(input_shapes[0], tf.float32)
+    spec_mask= tf.TensorSpec(input_shapes[1], tf.bool)       # or float32 if you cast mask to float
+
+    # 2) wrap model call
+    @tf.function
+    def model_fn(x, mask):
+        return model([x, mask])
+
+    # 3) get concrete function
+    concrete = model_fn.get_concrete_function(spec_x, spec_mask)
+
+    # 4) freeze and profile
+    frozen, graph_def = convert_variables_to_constants_v2_as_graph(concrete)
+    with tf.Graph().as_default() as g:
+        tf.compat.v1.import_graph_def(graph_def, name='')
         run_meta = tf.compat.v1.RunMetadata()
-        opts = tf.compat.v1.profiler.ProfileOptionBuilder.float_operation()
-        flops = tf.compat.v1.profiler.profile(
-            graph=graph, run_meta=run_meta, cmd="op", options=opts
+        opts     = tf.compat.v1.profiler.ProfileOptionBuilder.float_operation()
+        prof     = tf.compat.v1.profiler.profile(
+            graph=g, run_meta=run_meta, cmd='op', options=opts
         )
-        return flops.total_float_ops
+        return prof.total_float_ops
 
 
 def profile_gpu_memory_during_inference(
     model: tf.keras.Model,
     input_data: np.ndarray,
+    mask_data: np.ndarray,
 ) -> tuple[float, float]:
     """
-    Runs one forward pass in @tf.function and returns
-    (current_gpu_mb, peak_gpu_mb) allocated during that call.
+    Profiles GPU memory for a 2-input model.
     """
-    # reset stats so we get a fresh peak measurement
-    tf.config.experimental.reset_memory_stats("GPU:0")
+    # reset memory stats
+    tf.config.experimental.reset_memory_stats('GPU:0')
 
     @tf.function
-    def infer(x):
-        return model(x, training=False)
+    def infer(x, mask):
+        return model([x, mask], training=False)
 
-    # warm-up to allocate buffers
-    _ = infer(input_data[:1])
-    # actual profiling
-    _ = infer(input_data)
+    # warmup
+    _ = infer(input_data[:1], mask_data[:1])
+    # actual
+    _ = infer(input_data,    mask_data)
 
-    mem = tf.config.experimental.get_memory_info("GPU:0")
-    current_mb = mem["current"] / (1024**2)
-    peak_mb = mem["peak"] / (1024**2)
-    return current_mb, peak_mb
+    mem = tf.config.experimental.get_memory_info('GPU:0')
+    return mem['current']/(1024**2), mem['peak']/(1024**2)
 
 
+
+def apply_sorting(x, sort_by, R, batch_size):
+    if sort_by in ("pt", "eta", "phi", "delta_R", "kt"):
+        if sort_by == "pt":
+            key = x[:, :, 0]
+        elif sort_by == "eta":
+            key = x[:, :, 1]
+        elif sort_by == "phi":
+            key = x[:, :, 2]
+        elif sort_by == "delta_R":
+            key = np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
+        else:
+            key = x[:, :, 0] * np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
+        idx = np.argsort(key, axis=1)[:, ::-1]
+        return np.take_along_axis(x, idx[:, :, None], axis=1)
+    else:
+        return sort_events_by_cluster(x, R, batch_size)
+        
 def run_testing(
     model,
     data_dir,
@@ -88,8 +126,9 @@ def run_testing(
     logging.info("Starting testing phase...")
 
     # Load and sort test data
-    num_particles = model.input_shape[1]
-    feat_dim = model.input_shape[2]
+    print(model.input_shape)
+    num_particles = model.input_shape[0][1]
+    feat_dim = model.input_shape[0][2]
     x_file = f"x_val_robust_{num_particles}const_ptetaphi.npy"
     y_file = f"y_val_robust_{num_particles}const_ptetaphi.npy"
     x = np.load(os.path.join(data_dir, x_file))
@@ -97,35 +136,44 @@ def run_testing(
     logging.info("Loaded TEST arrays: %s, %s", x_file, y_file)
 
     x = apply_sorting(x, sort_by, cluster_R, cluster_batch_size)
+    mask = np.any(x != 0.0, axis=-1)  # (N, num_particles)
     logging.info("Applied '%s' sorting to TEST set", sort_by)
 
     # FLOPs & timing
-    flops = get_flops(model, [1, num_particles, feat_dim])
+    flops = get_flops(
+        model,
+        [
+            (1, num_particles, feat_dim),
+            (1, num_particles),
+        ]
+    )
     macs = flops // 2
     logging.info("FLOPs per inference: %d", flops)
     logging.info("MACs per inference: %d", macs)
 
     # inference timing
-    _ = model.predict(x[:batch_size], batch_size=batch_size)
+    _ = model.predict([x[:batch_size], mask[:batch_size]], batch_size=batch_size)
     times = []
     for _ in range(20):
         t0 = time.perf_counter()
-        _ = model.predict(x[:batch_size], batch_size=batch_size)
+        _ = model.predict([x[:batch_size], mask[:batch_size]], batch_size=batch_size)
         times.append(time.perf_counter() - t0)
     avg_ns = np.mean(times) / batch_size * 1e9
     logging.info("Avg inference time / event: %.2f ns", avg_ns)
 
     # Profile GPU memory usage
-    current_gpu_mb, peak_gpu_mb = profile_gpu_memory_during_inference(
-        model, x[:batch_size]
+    current_mb, peak_mb = profile_gpu_memory_during_inference(
+        model,
+        x[:batch_size],
+        mask[:batch_size]
     )
     logging.info(
-        "GPU memory — current: %.1f MB, peak: %.1f MB", current_gpu_mb, peak_gpu_mb
+        "GPU memory — current: %.1f MB, peak: %.1f MB", current_mb, peak_mb
     )
 
-    # Predictions & metrics
-    preds = model.predict(x, batch_size=batch_size)
-    acc = accuracy_score(np.argmax(y, 1), np.argmax(preds, 1))
+    # final preds & metrics
+    preds = model.predict([x, mask], batch_size=batch_size)
+    acc = accuracy_score(np.argmax(y,1), np.argmax(preds,1))
     auc_m = roc_auc_score(y, preds, average="macro", multi_class="ovo")
     logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
 
@@ -307,6 +355,7 @@ def main():
     early_stop = EarlyStopping(
         monitor="val_loss", patience=40, restore_best_weights=True, verbose=1
     )
+    
     schedule = [
         (128, 200),
         (256, 200),
@@ -375,94 +424,7 @@ def main():
     plt.tight_layout()
     plt.savefig(os.path.join(save_dir, "accuracy_curve.png"))
     plt.close()
-    # compute and log FLOPs/MACs
-    flops = get_flops(model, [1, args.num_particles, x.shape[2]])
-    macs = flops // 2
-    logging.info("FLOPs per inference: %d", flops)
-    logging.info("MACs per inference: %d", macs)
-    print(f"FLOPs per inference: {flops}")
-    print(f"MACs per inference: {macs}")
-
-    # load test data
-    x_filename = f"x_val_robust_{args.num_particles}const_ptetaphi.npy"
-    y_filename = f"y_val_robust_{args.num_particles}const_ptetaphi.npy"
-    if args.sort_by == "cluster":
-        args.data_dir = args.data_dir.replace("processed", "sorted_by_cluster")
-        logging.info("Loaded pre-sorted data from %s", sorted_path)
-
-    x_path = os.path.join(args.data_dir, x_filename)
-    y_path = os.path.join(args.data_dir, y_filename)
-
-    x = np.load(x_path)
-    y = np.load(y_path)
-    logging.info("Loaded labels from %s", y_path)
-    if args.sort_by == "pt":
-        key = x[:, :, 0]
-    elif args.sort_by == "eta":
-        key = x[:, :, 1]
-    elif args.sort_by == "phi":
-        key = x[:, :, 2]
-    elif args.sort_by == "delta_R":
-        key = np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
-    elif args.sort_by == "kt":
-        key = x[:, :, 0] * np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
-        idx = np.argsort(key, axis=1)[:, ::-1]
-        x = np.take_along_axis(x, idx[:, :, None], axis=1)
-
-    # inference timing
-    _ = model(x[: args.batch_size])
-    times = []
-    for _ in range(20):
-        t0 = time.perf_counter()
-        _ = model(x[: args.batch_size])
-        times.append(time.perf_counter() - t0)
-    avg_ns = np.mean(np.array(times) / args.batch_size) * 1e9
-    logging.info("Avg inference time per event (ns): %.3f", avg_ns)
-    print(f"Avg inference time per event: {avg_ns:.3f} ns")
-
-    # Predict & metrics
-    preds = model.predict(x, batch_size=args.batch_size)
-    val_acc = accuracy_score(np.argmax(y, 1), np.argmax(preds, 1))
-    overall_auc = roc_auc_score(y, preds, average="macro", multi_class="ovo")
-    logging.info("Validation Accuracy: %.4f, ROC AUC: %.4f", val_acc, overall_auc)
-    print(f"Val Acc: {val_acc:.4f}, ROC AUC: {overall_auc:.4f}")
-
-    # ROC curves & one-over-FPR
-    class_labels = ["g", "q", "W", "Z", "t"]
-    plt.figure(figsize=(6, 6))
-    one_over_fpr = {}
-    for i, label in enumerate(class_labels):
-        fpr_vals, tpr_vals, _ = roc_curve(y[:, i], preds[:, i])
-        roc_auc_val = auc(fpr_vals, tpr_vals)
-        plt.plot(fpr_vals, tpr_vals, label=f"{label} (AUC={roc_auc_val:.2f})")
-        if np.max(tpr_vals) >= 0.8:
-            fpr_t = np.interp(0.8, tpr_vals, fpr_vals)
-            one_over_fpr[label] = 1.0 / fpr_t if fpr_t > 0 else np.nan
-            plt.plot(fpr_t, 0.8, "o")
-    plt.plot([0, 1], [0, 1], "k--")
-    plt.xlabel("FPR")
-    plt.ylabel("TPR")
-    plt.legend()
-    plt.title("ROC curves")
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, "roc_curves.png"))
-    plt.close()
-
-    # Background rejection logging
-    scores = preds[:, 1:] / (preds[:, :1] + preds[:, 1:])
-    scores = np.concatenate([preds[:, :1], scores], axis=1)
-    rej_list = []
-    for i, label in enumerate(class_labels[1:], start=1):
-        mask = (y[:, 0] == 1) | (y[:, i] == 1)
-        bin_y = (y[mask, i] == 1).astype(int)
-        bin_s = scores[mask, i]
-        fpr_vals, tpr_vals, _ = roc_curve(bin_y, bin_s)
-        idx = np.argmin(np.abs(tpr_vals - 0.8))
-        rej = 1.0 / fpr_vals[idx] if fpr_vals[idx] > 0 else np.inf
-        logging.info("Background rejection @0.8 for %s: %.3f", label, rej)
-        rej_list.append(rej)
-    avg_rej = np.nanmean(rej_list)
-    logging.info("Average background rejection @0.8 TPR: %.3f", avg_rej)
+    
 
     run_testing(
         model=model,
