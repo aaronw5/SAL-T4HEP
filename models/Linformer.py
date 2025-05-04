@@ -241,10 +241,20 @@ class ClusteredLinformerAttention(layers.Layer):
         # 8) Scaled dot-product
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
-        if mask is not None:
-            # mask: (batch, seq_len) -> (batch, 1, 1, seq_len)
-            key_mask = tf.cast(mask[:, tf.newaxis, tf.newaxis, :], scores.dtype)
-            scores += (1.0 - key_mask) * -1e9
+        # if mask is not None:
+        #     cluster_mask0 = tf.less(
+        #     pos_idx[:, :, 0],           # first element in each cluster
+        #     tf.expand_dims(real_counts, 1)  # shape (batch,1)
+        # )
+        
+        # # 2) broadcast to match `scores` shape (batch, heads, query_len, proj_dim)
+        # key_mask = tf.cast(
+        #     cluster_mask0[:, None, None, :],  # -> (batch,1,1,proj_dim)
+        #     scores.dtype
+        # )
+        
+        # # 3) apply
+        # scores += (1.0 - key_mask) * -1e9
             
         if self.convolution:
             scores = self.attn_conv(scores)
@@ -254,6 +264,98 @@ class ClusteredLinformerAttention(layers.Layer):
         attn_out = tf.transpose(attn_out, [0,2,1,3])
         concat = tf.reshape(attn_out, (batch, -1, self.d_model))
         return self.dense(concat)
+
+    # for debugging
+    # def call(self, x, mask=None):
+    #     """
+    #     x: Tensor(shape=[batch, seq_len, d_model])
+    #     mask: Optional bool Tensor(shape=[batch, seq_len])
+    #     """
+    #     # TRACE‐TIME prints (static shapes) – helpful for catching mismatches
+    #     print("→ call() TRACE: x.shape =", x.shape, " mask.shape =", (mask.shape if mask is not None else None))
+    
+    #     batch = tf.shape(x)[0]
+    
+    #     # 1) Linear Q/K/V
+    #     q = tf.matmul(x, self.wq)
+    #     k = tf.matmul(x, self.wk)
+    #     v = tf.matmul(x, self.wv)
+    #     print("  after linear: q,k,v static shapes =", q.shape, k.shape, v.shape)
+    
+    #     # 2) Split heads
+    #     q = self.split_heads(q, batch)
+    #     k = self.split_heads(k, batch)
+    #     v = self.split_heads(v, batch)
+    #     print("  after split_heads: q,k,v static shapes =", q.shape, k.shape, v.shape)
+    
+    #     # 3) Pad one extra position
+    #     k = tf.pad(k, [[0,0],[0,0],[0,1],[0,0]])
+    #     v = tf.pad(v, [[0,0],[0,0],[0,1],[0,0]])
+    #     print("  after pad: k,v static shapes =", k.shape, v.shape)
+    
+    #     # 4) Count real tokens
+    #     real_counts = tf.reduce_sum(tf.cast(mask, tf.int32), axis=1)
+    #     real_counts = tf.clip_by_value(real_counts, 1, self.seq_len)
+    #     print("  real_counts static shape =", real_counts.shape)
+    
+    #     # 5) Lookup cluster index table
+    #     pos_idx = tf.gather(self.cluster_pos_idxs, real_counts - 1)
+    #     # pos_idx: (batch, proj_dim, chunk_size)
+    #     print("  pos_idx static shape =", pos_idx.shape)
+    
+    #     # 6) Expand & gather per‐cluster chunks
+    #     pos_idx = tf.expand_dims(pos_idx, 1)                           # (batch,1,P,chunk)
+    #     pos_idx = tf.tile(pos_idx, [1, self.num_heads, 1, 1])         # (batch,heads,P,chunk)
+    #     k_chunks = tf.gather(k, pos_idx, axis=2, batch_dims=2)
+    #     v_chunks = tf.gather(v, pos_idx, axis=2, batch_dims=2)
+    #     print("  k_chunks,v_chunks static shapes =", k_chunks.shape, v_chunks.shape)
+    
+    #     # 7) Linformer projections
+    #     if not self.cluster_E:
+    #         k_proj = tf.einsum('bhnd,hnr->bhrd', k, self.E)
+    #     else:
+    #         k_proj = tf.einsum('bhcld,hcl->bhcd', k_chunks, self.cluster_E_W)
+    #     if not self.cluster_F:
+    #         v_proj = tf.einsum('bhnd,hnr->bhrd', v, self.F)
+    #     else:
+    #         v_proj = tf.einsum('bhcld,hcl->bhcd', v_chunks, self.cluster_F_W)
+    #     print("  k_proj,v_proj static shapes =", k_proj.shape, v_proj.shape)
+    
+    #     # 8) Scaled dot-product
+    #     dk = tf.cast(self.depth, tf.float32)
+    #     scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
+    #     print("  scores static shape =", scores.shape)
+    
+    #     # 9) **Correct** cluster-level mask
+    #     # if mask is not None:
+    #     #     # Only use the first index in each cluster to test if it's < R
+    #     #     # pos_idx[:, :, 0] has shape (batch, proj_dim)
+    #     #     first_idx = pos_idx[:, :, 0]
+    #     #     cluster_mask0 = first_idx < tf.expand_dims(real_counts, 1)  # (batch, proj_dim)
+    #     #     print("  cluster_mask0 static shape =", cluster_mask0.shape)
+    #     #     key_mask = tf.cast(cluster_mask0[:, None, None, :], scores.dtype)
+    #     #     print("  key_mask static shape =", key_mask.shape)
+    #     #     scores += (1.0 - key_mask) * -1e9
+    
+    #     # 10) Optional convolution
+    #     if self.convolution:
+    #         scores = self.attn_conv(scores)
+    
+    #     # 11) Softmax & apply to v_proj
+    #     weights = tf.nn.softmax(scores, axis=-1)
+    #     print("  weights static shape =", weights.shape)
+    #     attn_out = tf.matmul(weights, v_proj)
+    #     print("  attn_out before transpose static shape =", attn_out.shape)
+    
+    #     # 12) Combine heads
+    #     attn_out = tf.transpose(attn_out, [0, 2, 1, 3])
+    #     print("  attn_out after transpose static shape =", attn_out.shape)
+    #     concat = tf.reshape(attn_out, (batch, -1, self.d_model))
+    #     print("  concat static shape =", concat.shape)
+    
+    #     return self.dense(concat)
+
+
 
 # ---------------------------
 # Transformer Block and Classifier Builder (with share_EF)
