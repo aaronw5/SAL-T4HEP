@@ -169,5 +169,9 @@ def build_standard_transformer_classifier(
     )(x)
     x = AggregationLayer('max')(x)
     x = layers.Dense(d_model, activation='relu')(x)
-    outputs = layers.Dense(5, activation='softmax')(x)
+    if output_dim == 1:
+        activation = 'sigmoid'
+    else:
+        activation = 'softmax'
+    outputs = layers.Dense(output_dim, activation=activation)(x)
     return Model(inputs, outputs)
