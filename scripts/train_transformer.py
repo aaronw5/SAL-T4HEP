@@ -69,47 +69,24 @@ def profile_gpu_memory_during_inference(
     return current_mb, peak_mb
 
 
-def sort_events_by_cluster(x, R, batch_size):
-    n_events, n_particles, _ = x.shape
-    sorted_x = np.zeros_like(x)
-    jet_def = fj.JetDefinition(fj.antikt_algorithm, R)
-    for i0 in range(0, n_events, batch_size):
-        batch = x[i0 : i0 + batch_size]
-        for bi, ev in enumerate(batch):
-            pts, etas, phis = ev[:, 0], ev[:, 1], ev[:, 2]
-            px = pts * np.cos(phis)
-            py = pts * np.sin(phis)
-            pz = pts * np.sinh(etas)
-            E = pts * np.cosh(etas)
-            ps = [fj.PseudoJet(px[j], py[j], pz[j], E[j]) for j in range(len(pts))]
-            for j, pj in enumerate(ps):
-                pj.set_user_index(j)
-            seq = fj.ClusterSequence(ps, jet_def)
-            jets = seq.inclusive_jets()
-            jets.sort(key=lambda J: J.perp(), reverse=True)
-            idxs = [c.user_index() for J in jets for c in J.constituents()]
-            remain = [j for j in range(len(pts)) if j not in idxs]
-            idxs.extend(remain)
-            sorted_x[i0 + bi] = ev[idxs]
-    return sorted_x
-
-
-def apply_sorting(x, sort_by, R, batch_size):
-    if sort_by in ("pt", "eta", "phi", "delta_R", "kt"):
-        if sort_by == "pt":
-            key = x[:, :, 0]
-        elif sort_by == "eta":
-            key = x[:, :, 1]
-        elif sort_by == "phi":
-            key = x[:, :, 2]
-        elif sort_by == "delta_R":
-            key = np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
-        else:
-            key = x[:, :, 0] * np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
-        idx = np.argsort(key, axis=1)[:, ::-1]
-        return np.take_along_axis(x, idx[:, :, None], axis=1)
+# ---------------------------
+# Sorting helper
+# ---------------------------
+def apply_sorting(x, sort_by):
+    if sort_by == "pt":
+        key = x[:, :, 0]
+    elif sort_by == "eta":
+        key = x[:, :, 1]
+    elif sort_by == "phi":
+        key = x[:, :, 2]
+    elif sort_by == "delta_R":
+        key = np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
+    elif sort_by == "kt":
+        key = x[:, :, 0] * np.sqrt(x[:, :, 1] ** 2 + x[:, :, 2] ** 2)
     else:
-        return sort_events_by_cluster(x, R, batch_size)
+        return x
+    idx = np.argsort(key, axis=1)[:, ::-1]
+    return np.take_along_axis(x, idx[:, :, None], axis=1)
 
 
 # ---------------------------
