@@ -340,7 +340,7 @@ def main():
     # Build standard transformer classifier
     model = build_standard_transformer_classifier(
         args.num_particles,
-        x.shape[2],
+        x_train.shape[2],
         d_model=args.d_model,
         d_ff=args.d_ff,
         output_dim=args.output_dim,
