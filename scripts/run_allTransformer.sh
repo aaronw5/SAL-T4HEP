@@ -5,6 +5,7 @@ usage() {
   echo "Usage: $0 \
     --data_dir PATH \
     --save_dir PATH \
+    --dataset hls4ml|top|jetclass \
      [--convolution] \
     [--conv_filter_heights H1,H2,...] [--vertical_stride N] \
     --batch_size N \
@@ -30,7 +31,7 @@ while [[ $# -gt 0 ]]; do
   case $1 in
     --data_dir) DATA_DIR="$2"; shift 2;;
     --save_dir) SAVE_DIR="$2"; shift 2;;
-
+    --dataset) DATASET="$2"; shift 2;;
     --convolution) CONVOLUTION_FLAG="--convolution"; shift;;
     --conv_filter_heights) CONV_FILTER_HEIGHTS_FLAG="--conv_filter_heights $2"; shift 2;;
     --vertical_stride) VERTICAL_STRIDE_FLAG="--vertical_stride $2"; shift 2;;
@@ -64,6 +65,7 @@ for NP in "${PARTICLES[@]}"; do
     ./train_transformer.py \
       --data_dir             "${DATA_DIR}" \
       --save_dir             "${SAVE_DIR}" \
+      --dataset              "${DATASET}" \
       ${CLUSTER_E_FLAG} \
       ${CLUSTER_F_FLAG} \
       ${SHARE_EF_FLAG} \
