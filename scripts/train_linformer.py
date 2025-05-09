@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 """
 Train a Linformer transformer on jet datasets (hls4ml, top, or jetclass),
-profiling performance and generating ROC curves.
+profiling performance and generating ROC curves, without using masks.
 """
 import os
 import sys
@@ -11,8 +11,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.abspath(os.path.join(SCRIPT_DIR, ".."))
 if PROJECT_ROOT not in sys.path:
     sys.path.insert(0, PROJECT_ROOT)
-# ─────────────────────────────────────────────────────────────────────────────
-
+    
 import time
 import argparse
 import logging
@@ -27,42 +26,46 @@ import matplotlib.pyplot as plt
 # import model builder
 from models.Linformer import build_linformer_transformer_classifier
 
-
-def get_flops(model, input_shapes):
+# ---------------------------
+# FLOPs computation (no mask)
+# ---------------------------
+def get_flops(model, input_shape):
     from tensorflow.python.framework.convert_to_constants import convert_variables_to_constants_v2_as_graph
-    spec_x    = tf.TensorSpec(input_shapes[0], tf.float32)
-    spec_mask = tf.TensorSpec(input_shapes[1], tf.bool)
+    spec_x = tf.TensorSpec(input_shape, tf.float32)
 
     @tf.function
-    def model_fn(x, mask):
-        return model([x, mask])
+    def model_fn(x):
+        return model(x)
 
-    concrete = model_fn.get_concrete_function(spec_x, spec_mask)
+    concrete = model_fn.get_concrete_function(spec_x)
     frozen, graph_def = convert_variables_to_constants_v2_as_graph(concrete)
     with tf.Graph().as_default() as g:
         tf.compat.v1.import_graph_def(graph_def, name='')
         run_meta = tf.compat.v1.RunMetadata()
-        opts     = tf.compat.v1.profiler.ProfileOptionBuilder.float_operation()
-        prof     = tf.compat.v1.profiler.profile(graph=g, run_meta=run_meta, cmd='op', options=opts)
+        opts = tf.compat.v1.profiler.ProfileOptionBuilder.float_operation()
+        prof = tf.compat.v1.profiler.profile(graph=g, run_meta=run_meta, cmd='op', options=opts)
         return prof.total_float_ops
 
-
-def profile_gpu_memory_during_inference(model, input_data, mask_data):
+# ---------------------------
+# GPU memory profiling (no mask)
+# ---------------------------
+def profile_gpu_memory_during_inference(model, input_data):
     tf.config.experimental.reset_memory_stats('GPU:0')
 
     @tf.function
-    def infer(x, mask):
-        return model([x, mask], training=False)
+    def infer(x):
+        return model(x, training=False)
 
-    _ = infer(input_data[:1], mask_data[:1])
-    _ = infer(input_data,    mask_data)
+    _ = infer(input_data[:1])
+    _ = infer(input_data)
 
     mem = tf.config.experimental.get_memory_info('GPU:0')
     return mem['current']/(1024**2), mem['peak']/(1024**2)
 
-
+# ---------------------------
+# Sorting helper
+# ---------------------------
 def apply_sorting(x, sort_by):
-    # only pt, eta, phi, delta_R, kt
     if sort_by == "pt":
         key = x[:, :, 0]
     elif sort_by == "eta":
@@ -78,7 +81,9 @@ def apply_sorting(x, sort_by):
     idx = np.argsort(key, axis=1)[:, ::-1]
     return np.take_along_axis(x, idx[:, :, None], axis=1)
 
-
+# ---------------------------
+# Testing / Profiling
+# ---------------------------
 def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_particles):
     logging.info("Starting testing phase...")
 
@@ -94,39 +99,38 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
         y_test = np.load(os.path.join(data_dir, 'temp_test_labels/labels.npy'))
     logging.info("Loaded TEST arrays for %s: %s, %s", dataset, x_test.shape, y_test.shape)
 
-    # sorting and mask for test
-    x_test    = apply_sorting(x_test, sort_by)
-    mask_test = np.any(x_test != 0.0, axis=-1)
+    # sorting for test
+    x_test = apply_sorting(x_test, sort_by)
     logging.info("Applied '%s' sorting to TEST set", sort_by)
 
     # flops & macs
     num_p, feat_d = x_test.shape[1], x_test.shape[2]
-    flops         = get_flops(model, [(1, num_p, feat_d), (1, num_p)])
-    macs          = flops // 2
+    flops = get_flops(model, (1, num_p, feat_d))
+    macs = flops // 2
     logging.info("FLOPs per inference: %d", flops)
     logging.info("MACs per inference: %d", macs)
 
     # timing
-    _ = model.predict([x_test[:batch_size], mask_test[:batch_size]], batch_size=batch_size)
+    _ = model.predict(x_test[:batch_size], batch_size=batch_size)
     times = []
     for _ in range(20):
         t0 = time.perf_counter()
-        _ = model.predict([x_test[:batch_size], mask_test[:batch_size]], batch_size=batch_size)
+        _ = model.predict(x_test[:batch_size], batch_size=batch_size)
         times.append(time.perf_counter() - t0)
     avg_ns = np.mean(times) / batch_size * 1e9
     logging.info("Avg inference time/event: %.2f ns", avg_ns)
 
     # GPU memory
-    curr, peak = profile_gpu_memory_during_inference(model, x_test[:batch_size], mask_test[:batch_size])
+    curr, peak = profile_gpu_memory_during_inference(model, x_test[:batch_size])
     logging.info("GPU memory current: %.1f MB, peak: %.1f MB", curr, peak)
 
     # metrics
-    preds = model.predict([x_test, mask_test], batch_size=batch_size)
+    preds = model.predict(x_test, batch_size=batch_size)
     if dataset == 'top':
-        acc   = accuracy_score(y_test, (preds.ravel() > 0.5).astype(int))
+        acc = accuracy_score(y_test, (preds.ravel() > 0.5).astype(int))
         auc_m = roc_auc_score(y_test, preds.ravel())
     else:
-        acc   = accuracy_score(np.argmax(y_test,1), np.argmax(preds,1))
+        acc = accuracy_score(np.argmax(y_test,1), np.argmax(preds,1))
         auc_m = roc_auc_score(y_test, preds, average='macro', multi_class='ovo')
     logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
 
@@ -172,9 +176,8 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
             ) if dataset != 'jetclass' else np.ones_like(y_test[:,0], dtype=bool)
 
             if dataset == 'jetclass':
-                mask_bg = np.ones_like(y_test[:,0], dtype=bool)
-                bin_y   = (y_test[mask_bg, i] == i).astype(int)
-                bin_s   = preds[mask_bg, i]
+                bin_y = (y_test[mask_bg, i] == i).astype(int)
+                bin_s = preds[mask_bg, i]
             else:
                 bin_y = (y_test[mask_bg, i] == 1).astype(int)
                 bin_s = preds[mask_bg, i]
@@ -186,6 +189,9 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
             rej_vals.append(rej)
         logging.info("Avg bg rejection@0.8: %.3f", np.nanmean(rej_vals))
 
+# ---------------------------
+# Argument parsing and main
+# ---------------------------
 
 def parse_args():
     p = argparse.ArgumentParser(description="Train a Linformer on jet data")
@@ -297,13 +303,11 @@ def main():
         x_train.shape, y_train.shape, x_val.shape, y_val.shape
     )
 
-    # create masks for training and validation
-    mask_train = tf.reduce_any(x_train != 0.0, axis=-1)
-    mask_val   = tf.reduce_any(x_val   != 0.0, axis=-1)
-
+    # apply sorting
     x_train = apply_sorting(x_train, args.sort_by)
     x_val   = apply_sorting(x_val,   args.sort_by)
 
+    # build and compile model
     model = build_linformer_transformer_classifier(
         num_particles, x_train.shape[2],
         d_model=args.d_model, d_ff=args.d_ff,
@@ -321,10 +325,10 @@ def main():
         loss=loss_fn,
         metrics=["accuracy"],
     )
-    model.summary()
     model.summary(print_fn=lambda l: logging.info(l))
     logging.info("Total params: %d", model.count_params())
 
+    # callbacks
     ckpt  = ModelCheckpoint(
         os.path.join(save_dir, 'best.weights.h5'),
         monitor='val_loss', save_best_only=True, verbose=1
@@ -334,22 +338,23 @@ def main():
         restore_best_weights=True, verbose=1
     )
 
-    # schedule of (batch_size, epochs)
-    schedule = [(4096, 2)]
+    # training schedule
+    schedule = [(128,  100), (256,  100), (512,  100), (1024, 200), (2048, 200), (4096, 400)]
 
     ce = 0
     histories = []
     for bs, ep in schedule:
         tf.keras.backend.set_value(model.optimizer.lr, 1e-3)
         hist = model.fit(
-            [x_train, mask_train], y_train,
-            validation_data=([x_val, mask_val], y_val),
+            x_train, y_train,
+            validation_data=(x_val, y_val),
             initial_epoch=ce, epochs=ce+ep,
             batch_size=bs, callbacks=[ckpt, early], verbose=1
         )
         histories.append(hist)
         ce += ep
 
+    # save weights and metrics
     model.save_weights(os.path.join(save_dir, 'model.weights.h5'))
     train_loss = np.concatenate([h.history['loss'] for h in histories])
     val_loss   = np.concatenate([h.history['val_loss'] for h in histories])
@@ -360,29 +365,21 @@ def main():
     np.save(os.path.join(save_dir, 'train_accuracy.npy'), train_acc)
     np.save(os.path.join(save_dir, 'val_accuracy.npy'), val_acc)
 
+    # plot loss and accuracy
     plt.figure()
     plt.plot(train_loss, label='Train Loss')
     plt.plot(val_loss, label='Val Loss')
-    plt.xlabel('Epoch')
-    plt.ylabel('Loss')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'loss_curve.png'))
-    plt.close()
+    plt.xlabel('Epoch'); plt.ylabel('Loss'); plt.legend(); plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'loss_curve.png')); plt.close()
 
     plt.figure()
     plt.plot(train_acc, label='Train Acc')
     plt.plot(val_acc, label='Val Acc')
-    plt.xlabel('Epoch')
-    plt.ylabel('Accuracy')
-    plt.legend()
-    plt.tight_layout()
-    plt.savefig(os.path.join(save_dir, 'accuracy_curve.png'))
-    plt.close()
+    plt.xlabel('Epoch'); plt.ylabel('Accuracy'); plt.legend(); plt.tight_layout()
+    plt.savefig(os.path.join(save_dir, 'accuracy_curve.png')); plt.close()
 
     # final testing
     run_testing(model, args.dataset, args.data_dir, save_dir, args.sort_by, args.batch_size, args.num_particles)
-
 
 if __name__ == '__main__':
     main()
