@@ -11,7 +11,7 @@ Supports subsampling a fraction of events.
 import logging
 from pathlib import Path
 import argparse
-
+import os
 import numpy as np
 import pandas as pd
 import awkward as ak
@@ -150,6 +150,7 @@ def main():
 
     # process the requested splits
     for split in ["train", "val", "test"]:
+        os.makedirs(out_dir / split, exist_ok=True)
         h5file = in_dir / f"{split}.h5"
         if not h5file.exists():
             logger.warning(f"Missing {h5file}, skipping")
