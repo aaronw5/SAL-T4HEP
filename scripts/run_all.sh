@@ -15,7 +15,8 @@ Usage: $0 \
   [--proj_dim N] \
   [--num_particles N1,N2,...] \
   [--sort_by pt,eta,phi,delta_R,kt,cluster] \
-  [--cluster_E] [--cluster_F] [--share_EF] [--convolution]
+  [--cluster_E] [--cluster_F] [--share_EF] [--convolution] \
+  [--big]
 EOF
   exit 1
 }
@@ -67,6 +68,8 @@ while [[ $# -gt 0 ]]; do
       SHARE_EF_FLAG="--share_EF"; shift;;
     --convolution)
       CONV_FLAG="--convolution"; shift;;
+    --big)
+      BIG_FLAG="--big"; shift;;
     *)
       echo "Unknown argument: $1"
       usage;;
@@ -104,6 +107,7 @@ for NP in "${PARTICLES[@]}"; do
       $CLUSTER_E_FLAG \
       $CLUSTER_F_FLAG \
       $SHARE_EF_FLAG \
-      $CONV_FLAG
+      $CONV_FLAG \
+      $BIG_FLAG
   done
 done

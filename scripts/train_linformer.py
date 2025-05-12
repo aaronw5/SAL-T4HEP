@@ -25,6 +25,7 @@ import matplotlib.pyplot as plt
 
 # import model builder
 from models.Linformer import build_linformer_transformer_classifier
+from models.LinformerBig import build_linformer_transformer_classifier_big
 
 
 # ---------------------------
@@ -257,6 +258,7 @@ def parse_args():
     p.add_argument(
         "--proj_dim", type=int, default=4, help="Projection dimension for Linformer"
     )
+    p.add_argument("--big", action="store_true", help="Use big Linformer model")
     return p.parse_args()
 
 
@@ -344,21 +346,38 @@ def main():
     x_val = apply_sorting(x_val, args.sort_by)
 
     # build and compile model
-    model = build_linformer_transformer_classifier(
-        num_particles,
-        x_train.shape[2],
-        d_model=args.d_model,
-        d_ff=args.d_ff,
-        output_dim=output_dim,
-        num_heads=args.num_heads,
-        proj_dim=args.proj_dim,
-        cluster_E=args.cluster_E,
-        cluster_F=args.cluster_F,
-        share_EF=args.share_EF,
-        convolution=args.convolution,
-        conv_filter_heights=[1, 3, 5],
-        vertical_stride=1,
-    )
+    if args.big:
+        model = build_linformer_transformer_classifier_big(
+            num_particles,
+            x_train.shape[2],
+            d_model=args.d_model,
+            d_ff=args.d_ff,
+            output_dim=output_dim,
+            num_heads=args.num_heads,
+            proj_dim=args.proj_dim,
+            cluster_E=args.cluster_E,
+            cluster_F=args.cluster_F,
+            share_EF=args.share_EF,
+            convolution=args.convolution,
+            conv_filter_heights=[1, 3, 5],
+            vertical_stride=1,
+        )
+    else:
+        model = build_linformer_transformer_classifier(
+            num_particles,
+            x_train.shape[2],
+            d_model=args.d_model,
+            d_ff=args.d_ff,
+            output_dim=output_dim,
+            num_heads=args.num_heads,
+            proj_dim=args.proj_dim,
+            cluster_E=args.cluster_E,
+            cluster_F=args.cluster_F,
+            share_EF=args.share_EF,
+            convolution=args.convolution,
+            conv_filter_heights=[1, 3, 5],
+            vertical_stride=1,
+        )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss=loss_fn,
