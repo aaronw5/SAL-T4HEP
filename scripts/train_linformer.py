@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Train a Linformer transformer on jet datasets (hls4ml, top, or jetclass),
+Train a Linformer transformer on jet datasets (hls4ml, top, QG, or jetclass),
 profiling performance and generating ROC curves, without using masks.
 """
 import os
@@ -105,14 +105,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
         y_test = np.load(
             os.path.join(data_dir, f"y_val_robust_{num_particles}const_ptetaphi.npy")
         )
-    elif dataset == "top":
-        x_test = np.load(
-            os.path.join(data_dir, "TopTagging/temp_feats/test_features.npy")
-        )
-        y_test = np.load(
-            os.path.join(data_dir, "TopTagging/temp_labels/test_labels.npy")
-        )
-    else:  # jetclass
+    else:  # jetclass, top, or QG
         x_test = np.load(os.path.join(data_dir, "test/features.npy"))
         y_test = np.load(os.path.join(data_dir, "test/labels.npy"))
     logging.info(
@@ -146,7 +139,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
 
     # metrics
     preds = model.predict(x_test, batch_size=batch_size)
-    if dataset == "top":
+    if dataset == "top" or dataset == "QG":
         acc = accuracy_score(y_test, (preds.ravel() > 0.5).astype(int))
         auc_m = roc_auc_score(y_test, preds.ravel())
     else:
@@ -159,6 +152,8 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
         labels = ["q", "g", "W", "Z", "t"]
     elif dataset == "top":
         labels = ["qcd", "top"]
+    elif dataset == "QG":  # gluon is 0 and quark is 1.
+        labels = ["Gluon", "Quark"]
     else:
         labels = [
             "label_QCD",
@@ -176,7 +171,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
     plt.figure(figsize=(6, 6))
     one_over_fpr = {}
     for i, lab in enumerate(labels):
-        if dataset == "top":
+        if dataset == "top" or dataset == "QG":
             fpr, tpr, _ = roc_curve(y_test, preds.ravel())
         else:
             fpr, tpr, _ = roc_curve(y_test[:, i], preds[:, i])
@@ -200,7 +195,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
     logging.info("Avg 1/FPR@0.8: %.3f", np.nanmean(list(one_over_fpr.values())))
 
     # background rejection combined
-    if dataset != "top":
+    if dataset != "top" and dataset != "QG":
         rej_vals = []
         for i, lab in enumerate(labels[1:], start=1):
             mask_bg = (
@@ -208,7 +203,6 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
                 if dataset != "jetclass"
                 else np.ones_like(y_test[:, 0], dtype=bool)
             )
-
             if dataset == "jetclass":
                 bin_y = (y_test[mask_bg, i] == i).astype(int)
                 bin_s = preds[mask_bg, i]
@@ -239,7 +233,9 @@ def parse_args():
     p.add_argument(
         "--convolution", action="store_true", help="Use convolution on attention scores"
     )
-    p.add_argument("--dataset", choices=["hls4ml", "top", "jetclass"], default="hls4ml")
+    p.add_argument(
+        "--dataset", choices=["hls4ml", "top", "QG", "jetclass"], default="hls4ml"
+    )
     p.add_argument(
         "--sort_by",
         choices=["pt", "eta", "phi", "delta_R", "kt", "cluster"],
@@ -258,7 +254,7 @@ def parse_args():
     p.add_argument(
         "--proj_dim", type=int, default=4, help="Projection dimension for Linformer"
     )
-    p.add_argument("--big", action="store_true", help="Use big Linformer model")
+    p.add_argument("--num_layers", type=int, default=1, help="Number of layers")
     return p.parse_args()
 
 
@@ -271,9 +267,13 @@ def main():
         output_dim = 10
         loss_fn = "categorical_crossentropy"
     elif args.dataset == "top":
-        num_particles = 150
+        num_particles = 200
         output_dim = 1
         loss_fn = "binary_crossentropy"
+    elif args.dataset == "QG":
+        num_particles = 150
+        output_dim = 1
+        loss_fn = "categorical_crossentropy"
     else:  # hls4ml
         num_particles = args.num_particles
         output_dim = 5
@@ -314,20 +314,7 @@ def main():
         x_train, x_val, y_train, y_val = train_test_split(
             x, y, test_size=args.val_split, random_state=42
         )
-    elif args.dataset == "top":
-        x_train = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_feats/train_features.npy")
-        )
-        y_train = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_labels/train_labels.npy")
-        )
-        x_val = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_feats/val_features.npy")
-        )
-        y_val = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_labels/val_labels.npy")
-        )
-    else:  # jetclass
+    else:  # jetclass, top, or QG
         x_train = np.load(os.path.join(args.data_dir, "train/features.npy"))
         y_train = np.load(os.path.join(args.data_dir, "train/labels.npy"))
         x_val = np.load(os.path.join(args.data_dir, "val/features.npy"))
@@ -346,7 +333,7 @@ def main():
     x_val = apply_sorting(x_val, args.sort_by)
 
     # build and compile model
-    if args.big:
+    if args.num_layers > 1:
         model = build_linformer_transformer_classifier_big(
             num_particles,
             x_train.shape[2],
@@ -359,8 +346,9 @@ def main():
             cluster_F=args.cluster_F,
             share_EF=args.share_EF,
             convolution=args.convolution,
-            conv_filter_heights=[1, 3, 5],
+            conv_filter_heights=[1, 3, 5, 7, 9],
             vertical_stride=1,
+            num_layers=args.num_layers,
         )
     else:
         model = build_linformer_transformer_classifier(
