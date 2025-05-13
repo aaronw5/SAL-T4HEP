@@ -381,9 +381,9 @@ def main():
         (128, 200),
         (256, 200),
         (512, 200),
-        (1024, 200),
-        (2048, 600),
+        (1024, 800),
     ]
+    logging.info("Training schedule: %s", schedule)
 
     ce = 0
     histories = []
