@@ -273,7 +273,7 @@ def main():
     elif args.dataset == "QG":
         num_particles = 150
         output_dim = 1
-        loss_fn = "categorical_crossentropy"
+        loss_fn = "binary_crossentropy"
     else:  # hls4ml
         num_particles = args.num_particles
         output_dim = 5
