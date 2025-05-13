@@ -107,6 +107,8 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
     else:  # jetclass, top, or QG
         x_test = np.load(os.path.join(data_dir, "test/features.npy"))
         y_test = np.load(os.path.join(data_dir, "test/labels.npy"))
+        if dataset == "jetclass":
+            x_test = x_test.transpose(0, 2, 1)
     logging.info(
         "Loaded TEST arrays for %s: %s, %s", dataset, x_test.shape, y_test.shape
     )
@@ -313,6 +315,10 @@ def main():
         y_train = np.load(os.path.join(args.data_dir, "train/labels.npy"))
         x_val = np.load(os.path.join(args.data_dir, "val/features.npy"))
         y_val = np.load(os.path.join(args.data_dir, "val/labels.npy"))
+
+    if args.dataset == "jetclass":
+        x_train = x_train.transpose(0, 2, 1)
+        x_val = x_val.transpose(0, 2, 1)
 
     logging.info(
         "Loaded train x=%s y=%s, val x=%s y=%s",
