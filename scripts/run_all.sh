@@ -6,7 +6,7 @@ usage() {
 Usage: $0 \
   --data_dir PATH \
   --save_dir PATH \
-  --dataset hls4ml|top|jetclass \
+  --dataset hls4ml|top|jetclass|QG \
   [--batch_size N] \
   [--val_split FLOAT] \
   [--d_model N] \
@@ -15,7 +15,8 @@ Usage: $0 \
   [--proj_dim N] \
   [--num_particles N1,N2,...] \
   [--sort_by pt,eta,phi,delta_R,kt,cluster] \
-  [--cluster_E] [--cluster_F] [--share_EF] [--convolution]
+  [--cluster_E] [--cluster_F] [--share_EF] [--convolution] \
+  [--num_layers N]
 EOF
   exit 1
 }
@@ -67,6 +68,8 @@ while [[ $# -gt 0 ]]; do
       SHARE_EF_FLAG="--share_EF"; shift;;
     --convolution)
       CONV_FLAG="--convolution"; shift;;
+    --num_layers)
+      NUM_LAYERS_FLAG="--num_layers $2"; shift 2;;
     *)
       echo "Unknown argument: $1"
       usage;;
@@ -104,6 +107,7 @@ for NP in "${PARTICLES[@]}"; do
       $CLUSTER_E_FLAG \
       $CLUSTER_F_FLAG \
       $SHARE_EF_FLAG \
-      $CONV_FLAG
+      $CONV_FLAG \
+      $NUM_LAYERS_FLAG
   done
 done

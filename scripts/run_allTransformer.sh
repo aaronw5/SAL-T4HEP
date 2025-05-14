@@ -2,11 +2,12 @@
 set -e
 
 usage() {
+  cat <<EOF
   echo "Usage: $0 \
     --data_dir PATH \
     --save_dir PATH \
-    --dataset hls4ml|top|jetclass \
-     [--convolution] \
+    --dataset hls4ml|top|jetclass|QG \
+    [--convolution] \
     [--conv_filter_heights H1,H2,...] [--vertical_stride N] \
     --batch_size N \
     --num_epochs N \
@@ -14,7 +15,9 @@ usage() {
     --d_ff N \
     --num_heads N \
     --num_particles N \
-    --sort_by pt|eta|phi|delta_R|kt|cluster"
+    --sort_by pt|eta|phi|delta_R|kt|cluster\
+    --num_layers N
+EOF
   exit 1
 }
 
@@ -42,6 +45,7 @@ while [[ $# -gt 0 ]]; do
     --num_heads) NUM_HEADS="$2"; shift 2;;
     --num_particles) NP_LIST="$2"; shift 2;;
     --sort_by) SORT_MODES="$2"; shift 2;;
+    --num_layers) NUM_LAYERS="$2"; shift 2;;
     *) echo "Unknown argument: $1"; usage;;
   esac
 done
@@ -78,6 +82,7 @@ for NP in "${PARTICLES[@]}"; do
       --d_ff                 "${D_FF}" \
       --num_heads            "${NUM_HEADS}" \
       --num_particles        "${NP}" \
-      --sort_by              "${SORT}"
+      --sort_by              "${SORT}" \
+      --num_layers           "${NUM_LAYERS}"
   done
 done

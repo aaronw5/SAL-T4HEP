@@ -22,6 +22,7 @@ if PROJECT_ROOT not in sys.path:
 
 
 from models.Transformer import AggregationLayer, build_standard_transformer_classifier
+from models.TransformerBig import build_standard_transformer_classifier_big
 
 
 # ----------------------------------------------------------------------------
@@ -103,16 +104,11 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
         y_test = np.load(
             os.path.join(data_dir, f"y_val_robust_{num_particles}const_ptetaphi.npy")
         )
-    elif dataset == "top":
-        x_test = np.load(
-            os.path.join(data_dir, "TopTagging/temp_feats/test_features.npy")
-        )
-        y_test = np.load(
-            os.path.join(data_dir, "TopTagging/temp_labels/test_labels.npy")
-        )
-    else:  # jetclass
+    else:  # jetclass, top, or QG
         x_test = np.load(os.path.join(data_dir, "test/features.npy"))
         y_test = np.load(os.path.join(data_dir, "test/labels.npy"))
+        if dataset == "jetclass":
+            x_test = x_test.transpose(0, 2, 1)
     logging.info(
         "Loaded TEST arrays for %s: %s, %s", dataset, x_test.shape, y_test.shape
     )
@@ -144,7 +140,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
 
     # metrics
     preds = model.predict(x_test, batch_size=batch_size)
-    if dataset == "top":
+    if dataset == "top" or dataset == "QG":
         acc = accuracy_score(y_test, (preds.ravel() > 0.5).astype(int))
         auc_m = roc_auc_score(y_test, preds.ravel())
     else:
@@ -157,6 +153,8 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
         labels = ["q", "g", "W", "Z", "t"]
     elif dataset == "top":
         labels = ["qcd", "top"]
+    elif dataset == "QG":  # gluon is 0 and quark is 1.
+        labels = ["Gluon", "Quark"]
     else:
         labels = [
             "label_QCD",
@@ -174,7 +172,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
     plt.figure(figsize=(6, 6))
     one_over_fpr = {}
     for i, lab in enumerate(labels):
-        if dataset == "top":
+        if dataset == "top" or dataset == "QG":
             fpr, tpr, _ = roc_curve(y_test, preds.ravel())
         else:
             fpr, tpr, _ = roc_curve(y_test[:, i], preds[:, i])
@@ -198,7 +196,7 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
     logging.info("Avg 1/FPR@0.8: %.3f", np.nanmean(list(one_over_fpr.values())))
 
     # background rejection combined
-    if dataset != "top":
+    if dataset != "top" and dataset != "QG":
         rej_vals = []
         for i, lab in enumerate(labels[1:], start=1):
             mask_bg = (
@@ -206,7 +204,6 @@ def run_testing(model, dataset, data_dir, save_dir, sort_by, batch_size, num_par
                 if dataset != "jetclass"
                 else np.ones_like(y_test[:, 0], dtype=bool)
             )
-
             if dataset == "jetclass":
                 bin_y = (y_test[mask_bg, i] == i).astype(int)
                 bin_s = preds[mask_bg, i]
@@ -230,7 +227,9 @@ def parse_args():
     p.add_argument(
         "--data_dir", required=True, help="Directory containing x and y .npy files"
     )
-    p.add_argument("--dataset", choices=["hls4ml", "top", "jetclass"], default="hls4ml")
+    p.add_argument(
+        "--dataset", choices=["hls4ml", "top", "QG", "jetclass"], default="hls4ml"
+    )
     p.add_argument("--save_dir", required=True, help="Base directory for outputs")
     p.add_argument(
         "--convolution", action="store_true", help="Use convolution on attention scores"
@@ -250,6 +249,7 @@ def parse_args():
     )
     p.add_argument("--cluster_R", type=float, default=0.4)
     p.add_argument("--cluster_batch_size", type=int, default=1024)
+    p.add_argument("--num_layers", type=int, default=1, help="Number of layers")
     return p.parse_args()
 
 
@@ -263,6 +263,10 @@ def main():
         args.output_dim = 10
         loss_fn = "categorical_crossentropy"
     elif args.dataset == "top":
+        num_particles = 200
+        args.output_dim = 1
+        loss_fn = "binary_crossentropy"
+    elif args.dataset == "QG":
         num_particles = 150
         args.output_dim = 1
         loss_fn = "binary_crossentropy"
@@ -306,24 +310,15 @@ def main():
         x_train, x_val, y_train, y_val = train_test_split(
             x, y, test_size=args.val_split, random_state=42
         )
-    elif args.dataset == "top":
-        x_train = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_feats/train_features.npy")
-        )
-        y_train = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_labels/train_labels.npy")
-        )
-        x_val = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_feats/val_features.npy")
-        )
-        y_val = np.load(
-            os.path.join(args.data_dir, "TopTagging/temp_labels/val_labels.npy")
-        )
-    else:  # jetclass
+    else:  # jetclass, top, or QG
         x_train = np.load(os.path.join(args.data_dir, "train/features.npy"))
         y_train = np.load(os.path.join(args.data_dir, "train/labels.npy"))
         x_val = np.load(os.path.join(args.data_dir, "val/features.npy"))
         y_val = np.load(os.path.join(args.data_dir, "val/labels.npy"))
+
+    if args.dataset == "jetclass":
+        x_train = x_train.transpose(0, 2, 1)
+        x_val = x_val.transpose(0, 2, 1)
 
     logging.info(
         "Loaded train x=%s y=%s, val x=%s y=%s",
@@ -338,15 +333,27 @@ def main():
     x_val = apply_sorting(x_val, args.sort_by)
 
     # Build standard transformer classifier
-    model = build_standard_transformer_classifier(
-        args.num_particles,
-        x_train.shape[2],
-        d_model=args.d_model,
-        d_ff=args.d_ff,
-        output_dim=args.output_dim,
-        num_heads=args.num_heads,
-        convolution=args.convolution,
-    )
+    if args.num_layers > 1:
+        model = build_standard_transformer_classifier_big(
+            args.num_particles,
+            x_train.shape[2],
+            d_model=args.d_model,
+            d_ff=args.d_ff,
+            output_dim=args.output_dim,
+            num_heads=args.num_heads,
+            convolution=args.convolution,
+            num_layers=args.num_layers,
+        )
+    else:
+        model = build_standard_transformer_classifier(
+            args.num_particles,
+            x_train.shape[2],
+            d_model=args.d_model,
+            d_ff=args.d_ff,
+            output_dim=args.output_dim,
+            num_heads=args.num_heads,
+            convolution=args.convolution,
+        )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss=loss_fn,
@@ -380,9 +387,9 @@ def main():
         (128, 200),
         (256, 200),
         (512, 200),
-        (1024, 200),
-        (2048, 600),
+        (1024, 800),
     ]
+    logging.info("Training schedule: %s", schedule)
 
     ce = 0
     histories = []
