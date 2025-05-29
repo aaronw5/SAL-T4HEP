@@ -1,4 +1,4 @@
-# SAL-T: Spatially Aware Linear Transformer for Efficient Particle Jet Identification
+# SAL-T: Spatially Aware Linear Transformer for Jet Tagging
 
 This repository contains code and scripts to preprocess jet data and train efficient transformer-based models for jet tagging on various datasets.
 
@@ -19,7 +19,7 @@ pip install -e .
 ```
 
 ## 📦 Dataset Preparation
-We use the [hls4ml dataset](https://zenodo.org/records/3602260) for training. To download and process the data:
+To download and process the [hls4ml dataset](https://zenodo.org/records/3602260) :
 ```bash
 python l1-jet-id-hls4ml/fast_jetclass/data/prepare_hls4ml_data.py \
   --root PATH-TO-DATA-DIR \
@@ -30,15 +30,30 @@ python l1-jet-id-hls4ml/fast_jetclass/data/prepare_hls4ml_data.py \
   --kfolds 5
 ```
 
+To download and process the [Top Quark Tagging Reference Dataset](https://zenodo.org/records/2603256):
+```bash
+python linformer4HEP/scripts/python process_top.py \
+--input_dir PATH-TO-STORE-RAW-DATA \
+--output_dir PATH-TO-STORE-PROCESSED-DATA \
+```
+
+To download and process the [Quark Gluon Dataset](https://zenodo.org/records/3164691):
+```bash
+python linformer4HEP/scripts/python process_qg.py \
+--input_dir PATH-TO-STORE-RAW-DATA \
+--output_dir PATH-TO-STORE-PROCESSED-DATA \
+```
+At this point, for the purpose of running our code, you no longer need the raw data, so you can safely delete that directory.
+
 ## 🚀 Running Training
 To train our Linformer-based jet classifier:
 ```bash
 chmod +x linformer4HEP/scripts/run_all.sh
 
 ./linformer4HEP/scripts/run_all.sh \
-  --data_dir /j-jepa-vol/linformer_data/TopTagging/200 \
-  --dataset top \
-  --save_dir /j-jepa-vol/linformer4HEP/runs/top/200/1layer/conv/cluster_both \
+  --data_dir PATH-TO-DATA \
+  --dataset [top|QG|hls4ml] \
+  --save_dir PATH-TO-SAVE-RESULTS \
   --cluster_E \
   --cluster_F \
   --convolution \
@@ -47,7 +62,7 @@ chmod +x linformer4HEP/scripts/run_all.sh
   --d_ff 16 \
   --num_heads 4 \
   --proj_dim 4 \
-  --num_particles 200 \
+  --num_particles [150|200] \
   --sort_by [kt|deltaR|pt]
 ```
 **Arguments:**
