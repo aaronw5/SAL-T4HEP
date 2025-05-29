@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 process_h5_to_npy.py
@@ -16,10 +17,12 @@ import numpy as np
 import pandas as pd
 import awkward as ak
 import vector
+import shutil
+import subprocess
+from dataset_utils import get_file, extract_archive
 
 # register vector with awkward for .eta, .phi, .pt
 vector.register_awkward()
-
 
 def pad_to_fixed_length(
     arr: np.ndarray, maxlen: int, pad_value: float = 0.0
@@ -36,6 +39,34 @@ def pad_to_fixed_length(
     return padded
 
 
+def download_dataset(basedir, force_download=False):
+    datadir = os.path.join(basedir, 'Top')
+    if force_download:
+        if os.path.exists(datadir):
+            print(f'Removing existing dir {datadir}')
+            shutil.rmtree(datadir)
+
+    os.makedirs(datadir, exist_ok=True)
+
+    # Define the Zenodo URLs and local filenames
+    files = [
+        ("https://zenodo.org/records/2603256/files/test.h5?download=1", "test.h5"),
+        ("https://zenodo.org/records/2603256/files/train.h5?download=1", "train.h5"),
+        ("https://zenodo.org/records/2603256/files/val.h5?download=1", "val.h5"),
+    ]
+
+    for url, filename in files:
+        local_path = os.path.join(datadir, filename)
+        if force_download or not os.path.exists(local_path):
+            print(f'Downloading {filename}...')
+            subprocess.run(["wget", url, "-O", local_path], check=True)
+        else:
+            print(f'{filename} already exists, skipping.')
+
+    print("Download complete.")
+
+    
+    
 def build_features_and_labels(h5path: Path, maxlen: int = 150, frac: float = 1.0):
     """
     Reads one HDF5 file and computes:
@@ -148,10 +179,13 @@ def main():
     out_dir = Path(args.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
+    # download the datasets
+    download_dataset(in_dir)
+
     # process the requested splits
     for split in ["train", "val", "test"]:
         os.makedirs(out_dir / split, exist_ok=True)
-        h5file = in_dir / f"{split}.h5"
+        h5file = in_dir / f"Top/{split}.h5"
         if not h5file.exists():
             logger.warning(f"Missing {h5file}, skipping")
             continue
