@@ -1,4 +1,4 @@
-# SAL-T: Spatially Aware Linear Transformer for Jet Tagging
+# SAL-T: Spatially Aware Linear Transformer for Efficient Particle Jet Identification
 
 This repository contains code and scripts to preprocess jet data and train efficient transformer-based models for jet tagging on various datasets.
 
