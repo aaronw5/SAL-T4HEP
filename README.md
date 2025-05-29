@@ -48,9 +48,9 @@ At this point, for the purpose of running our code, you no longer need the raw d
 ## 🚀 Running Training
 To train our Linformer-based jet classifier:
 ```bash
-chmod +x linformer4HEP/scripts/run_all.sh
+chmod +x SAL-T4HEP/scripts/run_all.sh
 
-./linformer4HEP/scripts/run_all.sh \
+./SAL-T4HEP/scripts/run_all.sh \
   --data_dir PATH-TO-DATA \
   --dataset [top|QG|hls4ml] \
   --save_dir PATH-TO-SAVE-RESULTS \
