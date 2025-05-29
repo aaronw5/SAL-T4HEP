@@ -32,14 +32,14 @@ python l1-jet-id-hls4ml/fast_jetclass/data/prepare_hls4ml_data.py \
 
 To download and process the [Top Quark Tagging Reference Dataset](https://zenodo.org/records/2603256):
 ```bash
-python linformer4HEP/scripts/python process_top.py \
+python SAL-T4HEP/scripts/python process_top.py \
 --input_dir PATH-TO-STORE-RAW-DATA \
 --output_dir PATH-TO-STORE-PROCESSED-DATA \
 ```
 
 To download and process the [Quark Gluon Dataset](https://zenodo.org/records/3164691):
 ```bash
-python linformer4HEP/scripts/python process_qg.py \
+python SAL-T4HEP/scripts/python process_qg.py \
 --input_dir PATH-TO-STORE-RAW-DATA \
 --output_dir PATH-TO-STORE-PROCESSED-DATA \
 ```
