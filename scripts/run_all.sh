@@ -91,8 +91,8 @@ if [[ -z "$DATA_DIR" || -z "$SAVE_DIR" || -z "$DATASET" ]]; then
 fi
 
 # Defaults for particle counts and sort modes
-IFS=',' read -ra PARTICLES <<< "${NP_LIST:-16, 32, 150}"
-IFS=',' read -ra SORTS     <<< "${SORT_MODES:-pt, delta_R, kt}"
+IFS=',' read -ra PARTICLES <<< "${NP_LIST:-16,32,150}"
+IFS=',' read -ra SORTS     <<< "${SORT_MODES:-pt,delta_R,kt}"
 
 # Loop over particle counts and sort modes
 for NP in "${PARTICLES[@]}"; do
