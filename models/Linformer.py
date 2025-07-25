@@ -98,6 +98,8 @@ class ClusteredLinformerAttention(layers.Layer):
         convolution=False,
         conv_filter_heights=[1,3,5],
         vertical_stride=1,
+        shuffle_all=False,
+        shuffle_234=False,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -112,6 +114,8 @@ class ClusteredLinformerAttention(layers.Layer):
         self.convolution = convolution
         self.conv_filter_heights = conv_filter_heights
         self.vertical_stride = vertical_stride
+        self.shuffle_all = shuffle_all
+        self.shuffle_234 = shuffle_234
 
     def build(self, input_shape):
         self.seq_len = input_shape[1]
@@ -167,6 +171,16 @@ class ClusteredLinformerAttention(layers.Layer):
             pad_k = self.chunk_size_E * self.proj_dim - self.seq_len
             k_p = tf.pad(k, [[0,0],[0,0],[0,pad_k],[0,0]])
             k_chunks = tf.reshape(k_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_E, self.depth))
+
+            if self.shuffle_all:
+                perm     = tf.random.shuffle(tf.range(self.proj_dim))
+            elif self.shuffle_234:
+                fixed_head   = tf.constant([0])        # keep index 0 where it is
+                shuffled_tail = tf.random.shuffle(tf.range(1, self.proj_dim))   # permute [1,2,3]
+                
+                perm = tf.concat([fixed_head, shuffled_tail], axis=0)      # e.g. [0,3,1,2]
+                
+            k_chunks = tf.gather(k_chunks, perm, axis=2)               
             k_proj = tf.einsum('bhcld,hcl->bhcd', k_chunks, self.cluster_E_W)
 
         # value projection
@@ -176,6 +190,16 @@ class ClusteredLinformerAttention(layers.Layer):
             pad_v = self.chunk_size_F * self.proj_dim - self.seq_len
             v_p = tf.pad(v, [[0,0],[0,0],[0,pad_v],[0,0]])
             v_chunks = tf.reshape(v_p, (batch, self.num_heads, self.proj_dim, self.chunk_size_F, self.depth))
+
+            if self.shuffle_all:
+                perm     = tf.random.shuffle(tf.range(self.proj_dim))
+            elif self.shuffle_234:
+                fixed_head   = tf.constant([0])        # keep index 0 where it is
+                shuffled_tail = tf.random.shuffle(tf.range(1, self.proj_dim))   # permute [1,2,3]
+                
+                perm = tf.concat([fixed_head, shuffled_tail], axis=0)      # e.g. [0,3,1,2]
+                
+            v_chunks = tf.gather(v_chunks, perm, axis=2)
             v_proj = tf.einsum('bhcld,hcl->bhcd', v_chunks, self.cluster_F_W)
 
         dk = tf.cast(self.depth, tf.float32)
@@ -195,12 +219,12 @@ class ClusteredLinformerAttention(layers.Layer):
 class LinformerTransformerBlock(layers.Layer):
     def __init__(self, d_model, d_ff, output_dim, num_heads, proj_dim,
                  cluster_E=False, cluster_F=False, share_EF=False,
-                 convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, **kwargs):
+                 convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, shuffle_all=0, shuffle_234=0, **kwargs):
         super().__init__(**kwargs)
         self.attn = ClusteredLinformerAttention(
             d_model, num_heads, proj_dim,
             cluster_E, cluster_F, share_EF,
-            convolution, conv_filter_heights, vertical_stride)
+            convolution, conv_filter_heights, vertical_stride, shuffle_all, shuffle_234)
         self.act1 = DynamicTanh()
         self.act2 = DynamicTanh()
         self.ffn = tf.keras.Sequential([
@@ -220,13 +244,13 @@ def build_linformer_transformer_classifier(
     d_model=16, d_ff=16, output_dim=5,
     num_heads=4, proj_dim=4,
     cluster_E=False, cluster_F=False, share_EF=False,
-    convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1):
+    convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, shuffle_all=0, shuffle_234=0):
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation='relu')(inputs)
     x = LinformerTransformerBlock(
         d_model, d_ff, output_dim, num_heads, proj_dim,
         cluster_E, cluster_F, share_EF,
-        convolution, conv_filter_heights, vertical_stride)(x)
+        convolution, conv_filter_heights, vertical_stride, shuffle_all, shuffle_234)(x)
     x = AggregationLayer('max')(x)
     x = layers.Dense(d_model, activation='relu')(x)
     activation = ''

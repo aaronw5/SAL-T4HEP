@@ -258,6 +258,8 @@ def parse_args():
         "--proj_dim", type=int, default=4, help="Projection dimension for Linformer"
     )
     p.add_argument("--num_layers", type=int, default=1, help="Number of layers")
+    p.add_argument("--shuffle_all", type=int, default=0, help="Shuffle all partitions")
+    p.add_argument("--shuffle_234", type=int, default=0, help="Shuffle only the 2,3,4 partitions (keep partition 1 fixed)")
     return p.parse_args()
 
 
@@ -372,6 +374,8 @@ def main():
             convolution=args.convolution,
             conv_filter_heights=[1, 3, 5],
             vertical_stride=1,
+            shuffle_all=args.shuffle_all,
+            shuffle_234=args.shuffle_234
         )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
