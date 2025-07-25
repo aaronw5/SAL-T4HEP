@@ -16,7 +16,9 @@ Usage: $0 \
   [--num_particles N1,N2,...] \
   [--sort_by pt,eta,phi,delta_R,kt,cluster] \
   [--cluster_E] [--cluster_F] [--share_EF] [--convolution] \
-  [--num_layers N]
+  [--num_layers N] \
+  [--shuffle_all N]      ### NEW
+  [--shuffle_234 N]      ### NEW
 EOF
   exit 1
 }
@@ -32,6 +34,8 @@ D_MODEL_FLAG=""
 D_FF_FLAG=""
 HEADS_FLAG=""
 PROJ_DIM_FLAG=""
+SHUFFLE_ALL_FLAG=""     ### NEW
+SHUFFLE_234_FLAG=""     ### NEW
 NP_LIST=""
 SORT_MODES=""
 
@@ -70,6 +74,10 @@ while [[ $# -gt 0 ]]; do
       CONV_FLAG="--convolution"; shift;;
     --num_layers)
       NUM_LAYERS_FLAG="--num_layers $2"; shift 2;;
+    --shuffle_all)                         ### NEW
+      SHUFFLE_ALL_FLAG="--shuffle_all $2"; shift 2;;   ### NEW
+    --shuffle_234)                         ### NEW
+      SHUFFLE_234_FLAG="--shuffle_234 $2"; shift 2;;   ### NEW
     *)
       echo "Unknown argument: $1"
       usage;;
@@ -108,6 +116,8 @@ for NP in "${PARTICLES[@]}"; do
       $CLUSTER_F_FLAG \
       $SHARE_EF_FLAG \
       $CONV_FLAG \
-      $NUM_LAYERS_FLAG
+      $NUM_LAYERS_FLAG \
+      $SHUFFLE_ALL_FLAG \        ### NEW
+      $SHUFFLE_234_FLAG          ### NEW
   done
 done
