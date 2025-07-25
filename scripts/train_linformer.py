@@ -237,6 +237,13 @@ def parse_args():
         "--convolution", action="store_true", help="Use convolution on attention scores"
     )
     p.add_argument(
+        "--conv_filter_heights",
+        type=int,
+        nargs="+",
+        default=None,
+        help="List of convolution filter heights",
+    )
+    p.add_argument(
         "--dataset", choices=["hls4ml", "top", "QG", "jetclass"], default="hls4ml"
     )
     p.add_argument(
@@ -259,7 +266,12 @@ def parse_args():
     )
     p.add_argument("--num_layers", type=int, default=1, help="Number of layers")
     p.add_argument("--shuffle_all", type=int, default=0, help="Shuffle all partitions")
-    p.add_argument("--shuffle_234", type=int, default=0, help="Shuffle only the 2,3,4 partitions (keep partition 1 fixed)")
+    p.add_argument(
+        "--shuffle_234",
+        type=int,
+        default=0,
+        help="Shuffle only the 2,3,4 partitions (keep partition 1 fixed)",
+    )
     return p.parse_args()
 
 
@@ -342,6 +354,14 @@ def main():
     x_val = apply_sorting(x_val, args.sort_by)
 
     # build and compile model
+    if args.conv_filter_heights:
+        conv_filter_heights = args.conv_filter_heights
+    else:
+        if args.num_layers > 1:
+            conv_filter_heights = [1, 3, 5, 7, 9]
+        else:
+            conv_filter_heights = [1, 3, 5]
+
     if args.num_layers > 1:
         model = build_linformer_transformer_classifier_big(
             num_particles,
@@ -355,7 +375,7 @@ def main():
             cluster_F=args.cluster_F,
             share_EF=args.share_EF,
             convolution=args.convolution,
-            conv_filter_heights=[1, 3, 5, 7, 9],
+            conv_filter_heights=conv_filter_heights,
             vertical_stride=1,
             num_layers=args.num_layers,
         )
@@ -372,10 +392,10 @@ def main():
             cluster_F=args.cluster_F,
             share_EF=args.share_EF,
             convolution=args.convolution,
-            conv_filter_heights=[1, 3, 5],
+            conv_filter_heights=conv_filter_heights,
             vertical_stride=1,
             shuffle_all=args.shuffle_all,
-            shuffle_234=args.shuffle_234
+            shuffle_234=args.shuffle_234,
         )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
