@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import layers, Model
 
 # ---------------------------
-# Aggregation Layer (unchanged)
+# Aggregation Layer
 # ---------------------------
 class AggregationLayer(layers.Layer):
     def __init__(self, aggreg="mean", **kwargs):
@@ -18,7 +18,7 @@ class AggregationLayer(layers.Layer):
             raise ValueError("Unsupported aggregation: use 'mean' or 'max'.")
 
 # ---------------------------
-# Attention Convolution Layer (unchanged)
+# Attention Convolution Layer
 # ---------------------------
 class AttentionConvLayer(layers.Layer):
     def __init__(self, filter_heights=[1], vertical_stride=1, **kwargs):
@@ -62,7 +62,7 @@ class AttentionConvLayer(layers.Layer):
         return tf.reshape(out, (batch_size, num_heads, seq_len, proj_dim))
 
 # ---------------------------
-# Dynamic Tanh Activation (unchanged)
+# Dynamic Tanh Activation
 # ---------------------------
 class DynamicTanh(layers.Layer):
     def __init__(self, **kwargs):
@@ -77,10 +77,11 @@ class DynamicTanh(layers.Layer):
         return tf.math.tanh(self.alpha * inputs + self.beta)
 
 # ---------------------------
-# Standard Transformer Attention Layer
+# Multi-Head Attention with Optional Pairwise Mask
 # ---------------------------
 class StandardMultiHeadAttention(layers.Layer):
-    def __init__(self, d_model, num_heads, convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, **kwargs):
+    def __init__(self, d_model, num_heads, convolution=False, conv_filter_heights=[1, 3, 5],
+                 vertical_stride=1, use_attention_mask=True, **kwargs):
         super().__init__(**kwargs)
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
         self.num_heads = num_heads
@@ -89,25 +90,52 @@ class StandardMultiHeadAttention(layers.Layer):
         self.convolution = convolution
         self.conv_filter_heights = conv_filter_heights
         self.vertical_stride = vertical_stride
+        self.use_attention_mask = use_attention_mask
 
-    def build(self, input_shape):
-        self.wq = self.add_weight("wq", shape=(self.d_model, self.d_model), initializer="glorot_uniform", trainable=True)
-        self.wk = self.add_weight("wk", shape=(self.d_model, self.d_model), initializer="glorot_uniform", trainable=True)
-        self.wv = self.add_weight("wv", shape=(self.d_model, self.d_model), initializer="glorot_uniform", trainable=True)
-        self.dense = layers.Dense(self.d_model)
+        self.wq = self.add_weight("wq", shape=(d_model, d_model), initializer="glorot_uniform", trainable=True)
+        self.wk = self.add_weight("wk", shape=(d_model, d_model), initializer="glorot_uniform", trainable=True)
+        self.wv = self.add_weight("wv", shape=(d_model, d_model), initializer="glorot_uniform", trainable=True)
+        self.dense = layers.Dense(d_model)
 
         if self.convolution:
             self.attn_conv = AttentionConvLayer(self.conv_filter_heights, self.vertical_stride)
 
-        super().build(input_shape)
+        if self.use_attention_mask:
+            self.mask_conv1 = layers.Conv2D(8, (1, 1), activation='relu', padding='same')
+            self.mask_conv2 = layers.Conv2D(8, (1, 1), activation='relu', padding='same')
+            self.mask_conv3 = layers.Conv2D(1, (1, 1), padding='same')  # FIXED: Output channel = 1
 
     def split_heads(self, x, batch_size):
         x = tf.reshape(x, (batch_size, -1, self.num_heads, self.depth))
         return tf.transpose(x, perm=[0, 2, 1, 3])
 
-    def call(self, x):
-        batch_size = tf.shape(x)[0]
+    def compute_pairwise_features(self, particles):
+        pt = particles[..., 0]
+        eta = particles[..., 1]
+        phi = particles[..., 2]
 
+        pt_i, pt_j = tf.expand_dims(pt, 2), tf.expand_dims(pt, 1)
+        eta_i, eta_j = tf.expand_dims(eta, 2), tf.expand_dims(eta, 1)
+        phi_i, phi_j = tf.expand_dims(phi, 2), tf.expand_dims(phi, 1)
+
+        d_eta = eta_i - eta_j
+        d_phi = tf.math.atan2(tf.sin(phi_i - phi_j), tf.cos(phi_i - phi_j))
+        delta = tf.sqrt(d_eta ** 2 + d_phi ** 2)
+        kT = tf.minimum(pt_i, pt_j) * delta
+        z = tf.minimum(pt_i, pt_j) / (pt_i + pt_j + 1e-8)
+
+        m2 = pt_i ** 2 + pt_j ** 2 - 2 * pt_i * pt_j * tf.cos(d_phi)
+        m2 = tf.maximum(m2, 1e-8)  # FIXED: prevent negative or zero for log
+
+        return tf.stack([
+            tf.math.log(tf.maximum(delta, 1e-8)),
+            tf.math.log(tf.maximum(kT, 1e-8)),
+            tf.math.log(tf.maximum(z, 1e-8)),
+            tf.math.log(m2)
+        ], axis=-1)
+
+    def call(self, x, particles=None):
+        batch_size = tf.shape(x)[0]
         q = tf.matmul(x, self.wq)
         k = tf.matmul(x, self.wk)
         v = tf.matmul(x, self.wv)
@@ -122,6 +150,16 @@ class StandardMultiHeadAttention(layers.Layer):
         if self.convolution:
             scores = self.attn_conv(scores)
 
+        if self.use_attention_mask and particles is not None:
+            features = self.compute_pairwise_features(particles)  # shape: [B, S, S, 4]
+            mask = self.mask_conv1(features)
+            mask = self.mask_conv2(mask)
+            mask = self.mask_conv3(mask)  # shape: [B, S, S, 1]
+            mask = tf.squeeze(mask, axis=-1)  # shape: [B, S, S]
+            mask = tf.expand_dims(mask, axis=1)  # shape: [B, 1, S, S]
+            mask = tf.clip_by_value(mask, -10.0, 10.0)  # FIXED: prevent softmax explosion
+            scores += mask
+
         weights = tf.nn.softmax(scores, axis=-1)
         attn_output = tf.matmul(weights, v)
         attn_output = tf.transpose(attn_output, perm=[0, 2, 1, 3])
@@ -129,16 +167,19 @@ class StandardMultiHeadAttention(layers.Layer):
         return self.dense(concat)
 
 # ---------------------------
-# Transformer Block and Classifier Builder
+# Transformer Block
 # ---------------------------
 class StandardTransformerBlock(layers.Layer):
-    def __init__(self, d_model, d_ff, output_dim, num_heads, convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1, **kwargs):
+    def __init__(self, d_model, d_ff, output_dim, num_heads,
+                 convolution=False, conv_filter_heights=[1, 3, 5], vertical_stride=1,
+                 use_attention_mask=True, **kwargs):
         super().__init__(**kwargs)
         self.attn = StandardMultiHeadAttention(
             d_model, num_heads,
             convolution=convolution,
             conv_filter_heights=conv_filter_heights,
-            vertical_stride=vertical_stride
+            vertical_stride=vertical_stride,
+            use_attention_mask=use_attention_mask
         )
         self.act1 = DynamicTanh()
         self.act2 = DynamicTanh()
@@ -147,31 +188,32 @@ class StandardTransformerBlock(layers.Layer):
             layers.Dense(d_model)
         ])
 
-    def call(self, x):
-        attn_out = self.attn(x)
+    def call(self, x, particles=None):
+        attn_out = self.attn(x, particles)
         out1 = self.act1(x + attn_out)
         ffn_out = self.ffn(out1)
         return self.act2(out1 + ffn_out)
 
+# ---------------------------
+# Model Builder
+# ---------------------------
 def build_standard_transformer_classifier(
     num_particles, feature_dim,
     d_model=16, d_ff=16, output_dim=16,
     num_heads=4,
-    convolution=False, conv_filter_heights=[1,3,5], vertical_stride=1):
-    
+    convolution=False, conv_filter_heights=[1, 3, 5], vertical_stride=1,
+    use_attention_mask=True):
+
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation='relu')(inputs)
     x = StandardTransformerBlock(
         d_model, d_ff, output_dim, num_heads,
         convolution=convolution,
         conv_filter_heights=conv_filter_heights,
-        vertical_stride=vertical_stride
-    )(x)
+        vertical_stride=vertical_stride,
+        use_attention_mask=use_attention_mask
+    )(x, particles=inputs)
     x = AggregationLayer('max')(x)
     x = layers.Dense(d_model, activation='relu')(x)
-    if output_dim == 1:
-        activation = 'sigmoid'
-    else:
-        activation = 'softmax'
-    outputs = layers.Dense(output_dim, activation=activation)(x)
+    outputs = layers.Dense(output_dim, activation='sigmoid' if output_dim == 1 else 'softmax')(x)
     return Model(inputs, outputs)
