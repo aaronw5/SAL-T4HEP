@@ -6,32 +6,8 @@ DATASET="hls4ml"
 SORT_BY="kt"
 
 save_dirs=(
-  # ======  num_partitions  ======
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/2/150/kt/trial-5/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/2/150/kt/trial-7/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/2/150/kt/trial-8/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/1/150/kt/trial-5/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/1/150/kt/trial-7/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/1/150/kt/trial-8/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/8/150/kt/trial-6/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/8/150/kt/trial-7/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/8/150/kt/trial-8/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/16/150/kt/trial-6/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/16/150/kt/trial-7/"
-  "/j-jepa-vol/linformer4HEP/runs/num_partitions/16/150/kt/trial-8/"
-
-  # ====== shuffle ======
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_all/150/kt/trial-0/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_all/150/kt/trial-1/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_all/150/kt/trial-2/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_234/150/kt/trial-0/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_234/150/kt/trial-1/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_234/150/kt/trial-2/"
-
   # ====== conv_filter （trial-0,1,2） ======
   "/j-jepa-vol/linformer4HEP/runs/conv_filter/1_3_5_7/150/kt/trial-0/"
-  "/j-jepa-vol/linformer4HEP/runs/conv_filter/1_3_5_7/150/kt/trial-1/"
-  "/j-jepa-vol/linformer4HEP/runs/conv_filter/1_3_5_7/150/kt/trial-2/"
 
   "/j-jepa-vol/linformer4HEP/runs/conv_filter/1_3_5_7_9/150/kt/trial-0/"
   "/j-jepa-vol/linformer4HEP/runs/conv_filter/1_3_5_7_9/150/kt/trial-1/"
