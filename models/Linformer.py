@@ -114,6 +114,7 @@ class ClusteredLinformerAttention(layers.Layer):
         vertical_stride=1,
         shuffle_all=False,
         shuffle_234=False,
+        shuffle_34=False,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -130,6 +131,7 @@ class ClusteredLinformerAttention(layers.Layer):
         self.vertical_stride = vertical_stride
         self.shuffle_all = shuffle_all
         self.shuffle_234 = shuffle_234
+        self.shuffle_34 = shuffle_34
 
     def build(self, input_shape):
         self.seq_len = input_shape[1]
@@ -237,6 +239,11 @@ class ClusteredLinformerAttention(layers.Layer):
 
                 perm = tf.concat([fixed_head, shuffled_tail], axis=0)  # e.g. [0,3,1,2]
                 k_chunks = tf.gather(k_chunks, perm, axis=2)
+            elif self.shuffle_34:
+                fixed_heads = tf.constant([0, 1])
+                shuffled_tail = tf.random.shuffle(tf.range(2, self.proj_dim))
+                perm = tf.concat([fixed_heads, shuffled_tail], axis=0)
+                k_chunks = tf.gather(k_chunks, perm, axis=2)
             k_proj = tf.einsum("bhcld,hcl->bhcd", k_chunks, self.cluster_E_W)
 
         # value projection
@@ -261,6 +268,11 @@ class ClusteredLinformerAttention(layers.Layer):
 
                 perm = tf.concat([fixed_head, shuffled_tail], axis=0)  # e.g. [0,3,1,2]
 
+                v_chunks = tf.gather(v_chunks, perm, axis=2)
+            elif self.shuffle_34:
+                fixed_heads = tf.constant([0, 1])
+                shuffled_tail = tf.random.shuffle(tf.range(2, self.proj_dim))
+                perm = tf.concat([fixed_heads, shuffled_tail], axis=0)
                 v_chunks = tf.gather(v_chunks, perm, axis=2)
             v_proj = tf.einsum("bhcld,hcl->bhcd", v_chunks, self.cluster_F_W)
 
@@ -295,6 +307,7 @@ class LinformerTransformerBlock(layers.Layer):
         vertical_stride=1,
         shuffle_all=0,
         shuffle_234=0,
+        shuffle_34=0,
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -310,6 +323,7 @@ class LinformerTransformerBlock(layers.Layer):
             vertical_stride,
             shuffle_all,
             shuffle_234,
+            shuffle_34,
         )
         self.act1 = DynamicTanh()
         self.act2 = DynamicTanh()
@@ -340,6 +354,7 @@ def build_linformer_transformer_classifier(
     vertical_stride=1,
     shuffle_all=0,
     shuffle_234=0,
+    shuffle_34=0,
 ):
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation="relu")(inputs)
@@ -357,6 +372,7 @@ def build_linformer_transformer_classifier(
         vertical_stride,
         shuffle_all,
         shuffle_234,
+        shuffle_34,
     )(x)
     x = AggregationLayer("max")(x)
     x = layers.Dense(d_model, activation="relu")(x)

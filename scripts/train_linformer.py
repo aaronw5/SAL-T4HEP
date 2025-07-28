@@ -272,6 +272,12 @@ def parse_args():
         default=0,
         help="Shuffle only the 2,3,4 partitions (keep partition 1 fixed)",
     )
+    p.add_argument(
+        "--shuffle_34",
+        type=int,
+        default=0,
+        help="Shuffle only the 3,4 partitions (keep partitions 1,2 fixed)",
+    )
     return p.parse_args()
 
 
@@ -396,6 +402,7 @@ def main():
             vertical_stride=1,
             shuffle_all=args.shuffle_all,
             shuffle_234=args.shuffle_234,
+            shuffle_34=args.shuffle_34,
         )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
