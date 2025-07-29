@@ -119,10 +119,11 @@ class StandardMultiHeadAttention(layers.Layer):
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k, transpose_b=True) / tf.math.sqrt(dk)
 
+        weights = tf.nn.softmax(scores, axis=-1)
+        
         if self.convolution:
             scores = self.attn_conv(scores)
-
-        weights = tf.nn.softmax(scores, axis=-1)
+            
         attn_output = tf.matmul(weights, v)
         attn_output = tf.transpose(attn_output, perm=[0, 2, 1, 3])
         concat = tf.reshape(attn_output, (batch_size, -1, self.d_model))
