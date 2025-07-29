@@ -180,9 +180,12 @@ class ClusteredLinformerAttention(layers.Layer):
 
         dk = tf.cast(self.depth, tf.float32)
         scores = tf.matmul(q, k_proj, transpose_b=True) / tf.math.sqrt(dk)
+
+        weights = tf.nn.softmax(scores, axis=-1)
+        
         if self.convolution:
             scores = self.attn_conv(scores)
-        weights = tf.nn.softmax(scores, axis=-1)
+            
         attn_out = tf.matmul(weights, v_proj)
 
         attn_out = tf.transpose(attn_out, [0,2,1,3])
