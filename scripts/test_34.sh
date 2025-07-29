@@ -7,9 +7,9 @@ SORT_BY="kt"
 
 save_dirs=(
   # ====== shuffle ======
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_34/150/kt/trial-0/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_34/150/kt/trial-1/"
-  "/j-jepa-vol/linformer4HEP/runs/shuffle_34/150/kt/trial-2/"
+  "/j-jepa-vol/linformer4HEP/runs/shuffle_34/150/kt/trial-3/"
+  "/j-jepa-vol/linformer4HEP/runs/shuffle_34/150/kt/trial-4/"
+  "/j-jepa-vol/linformer4HEP/runs/shuffle_34/150/kt/trial-5/"
 )
 
 
