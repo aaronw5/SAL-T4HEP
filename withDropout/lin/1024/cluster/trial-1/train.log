@@ -1,0 +1,40 @@
+2025-07-27 22:31:55,756 INFO Arguments: Namespace(data_dir='/part-vol-3/modelnet10/', save_dir='../runs/modelnet10/withDropout/lin/', dataset='modelnet10', sort_by='cluster', batch_size=1024, val_split=0.2, num_particles=1024, d_model=16, d_ff=16, num_heads=4, proj_dim=4, num_layers=1, cluster_E=False, cluster_F=False, share_EF=False, convolution=False)
+2025-07-27 22:31:55,785 INFO Loaded TRAIN set: x=(3192, 1024, 3), y=(3192, 10); VAL set: x=(799, 1024, 3), y=(799, 10)
+2025-07-27 22:31:55,785 INFO Skipping sorting for modelnet10 TRAIN/VAL sets
+2025-07-27 22:31:57,340 INFO Model: "model"
+2025-07-27 22:31:57,340 INFO _________________________________________________________________
+2025-07-27 22:31:57,341 INFO  Layer (type)                Output Shape              Param #   
+2025-07-27 22:31:57,341 INFO =================================================================
+2025-07-27 22:31:57,341 INFO  input_1 (InputLayer)        [(None, 1024, 3)]         0         
+2025-07-27 22:31:57,341 INFO                                                                  
+2025-07-27 22:31:57,341 INFO  dense (Dense)               (None, 1024, 16)          64        
+2025-07-27 22:31:57,341 INFO                                                                  
+2025-07-27 22:31:57,341 INFO  linformer_transformer_bloc  (None, 1024, 16)          34356     
+2025-07-27 22:31:57,341 INFO  k (LinformerTransformerBlo                                      
+2025-07-27 22:31:57,341 INFO  ck)                                                             
+2025-07-27 22:31:57,341 INFO                                                                  
+2025-07-27 22:31:57,341 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-07-27 22:31:57,341 INFO  tionLayer)                                                      
+2025-07-27 22:31:57,341 INFO                                                                  
+2025-07-27 22:31:57,341 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-07-27 22:31:57,341 INFO                                                                  
+2025-07-27 22:31:57,341 INFO  dense_4 (Dense)             (None, 10)                170       
+2025-07-27 22:31:57,341 INFO                                                                  
+2025-07-27 22:31:57,341 INFO =================================================================
+2025-07-27 22:31:57,342 INFO Total params: 34862 (136.18 KB)
+2025-07-27 22:31:57,342 INFO Trainable params: 34862 (136.18 KB)
+2025-07-27 22:31:57,342 INFO Non-trainable params: 0 (0.00 Byte)
+2025-07-27 22:31:57,342 INFO _________________________________________________________________
+2025-07-27 22:31:57,342 INFO Total parameters: 34862
+2025-07-27 22:31:57,342 INFO Training schedule: [(128, 2000)]
+2025-07-27 22:33:38,029 INFO Starting testing phase for modelnet10
+2025-07-27 22:33:39,876 INFO Loaded TEST set: x=(908, 1024, 3), y=(908,)
+2025-07-27 22:33:39,876 INFO Skipping sorting for modelnet10 TEST set
+2025-07-27 22:33:40,016 WARNING From /opt/conda/lib/python3.11/site-packages/tensorflow/python/profiler/internal/flops_registry.py:453: tensor_shape_from_node_def_name (from tensorflow.python.framework.graph_util_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate for instructions on how to migrate your code to TensorFlow v2.
+2025-07-27 22:33:40,021 INFO FLOPs per inference: 3769228
+2025-07-27 22:33:40,021 INFO MACs per inference: 1884614
+2025-07-27 22:33:41,318 INFO Avg inference time/event: 52559.03 ns
+2025-07-27 22:33:41,490 INFO GPU memory current: 68.7 MB, peak: 374.1 MB
+2025-07-27 22:33:41,551 INFO Test Accuracy: 0.7654, ROC AUC: 0.9680

@@ -1,0 +1,39 @@
+2025-07-26 10:30:07,405 INFO Args: Namespace(data_dir='/part-vol-3/modelnet10/', save_dir='../runs/modelnet10/transformer/', dataset='modelnet10', sort_by='cluster', batch_size=128, val_split=0.2, num_particles=1024, d_model=16, d_ff=16, num_heads=4, num_layers=1, convolution=False)
+2025-07-26 10:30:10,627 INFO Loaded TRAIN x=(3192, 1024, 3) y=(3192, 10); VAL x=(799, 1024, 3) y=(799, 10)
+2025-07-26 10:30:10,628 INFO Skipping sorting for modelnet10 TRAIN/VAL
+2025-07-26 10:30:12,225 INFO Model: "model"
+2025-07-26 10:30:12,225 INFO __________________________________________________________________________________________________
+2025-07-26 10:30:12,225 INFO  Layer (type)                Output Shape                 Param #   Connected to                  
+2025-07-26 10:30:12,225 INFO ==================================================================================================
+2025-07-26 10:30:12,225 INFO  input_1 (InputLayer)        [(None, 1024, 3)]            0         []                            
+2025-07-26 10:30:12,225 INFO                                                                                                   
+2025-07-26 10:30:12,225 INFO  dense (Dense)               (None, 1024, 16)             64        ['input_1[0][0]']             
+2025-07-26 10:30:12,225 INFO                                                                                                   
+2025-07-26 10:30:12,225 INFO  standard_transformer_block  (None, 1024, 16)             1588      ['dense[0][0]',               
+2025-07-26 10:30:12,225 INFO   (StandardTransformerBlock                                          'input_1[0][0]']             
+2025-07-26 10:30:12,225 INFO  )                                                                                                
+2025-07-26 10:30:12,225 INFO                                                                                                   
+2025-07-26 10:30:12,226 INFO  aggregation_layer (Aggrega  (None, 16)                   0         ['standard_transformer_block[0
+2025-07-26 10:30:12,226 INFO  tionLayer)                                                         ][0]']                        
+2025-07-26 10:30:12,226 INFO                                                                                                   
+2025-07-26 10:30:12,226 INFO  dense_4 (Dense)             (None, 16)                   272       ['aggregation_layer[0][0]']   
+2025-07-26 10:30:12,226 INFO                                                                                                   
+2025-07-26 10:30:12,226 INFO  dense_5 (Dense)             (None, 10)                   170       ['dense_4[0][0]']             
+2025-07-26 10:30:12,226 INFO                                                                                                   
+2025-07-26 10:30:12,226 INFO ==================================================================================================
+2025-07-26 10:30:12,226 INFO Total params: 2094 (8.18 KB)
+2025-07-26 10:30:12,226 INFO Trainable params: 2094 (8.18 KB)
+2025-07-26 10:30:12,226 INFO Non-trainable params: 0 (0.00 Byte)
+2025-07-26 10:30:12,226 INFO __________________________________________________________________________________________________
+2025-07-26 10:30:12,227 INFO Total params: 2094
+2025-07-26 10:30:12,227 INFO Schedule: [(128, 2000)]
+2025-07-26 10:35:22,850 INFO Starting test phase for modelnet10
+2025-07-26 10:35:24,928 INFO Loaded TEST: x=(908, 1024, 3), y=(908,)
+2025-07-26 10:35:24,928 INFO Skipping sorting for modelnet10 TEST
+2025-07-26 10:35:25,125 WARNING From /opt/conda/lib/python3.11/site-packages/tensorflow/python/profiler/internal/flops_registry.py:453: tensor_shape_from_node_def_name (from tensorflow.python.framework.graph_util_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate for instructions on how to migrate your code to TensorFlow v2.
+2025-07-26 10:35:25,132 INFO FLOPs per inference: 95683468, MACs: 47841734
+2025-07-26 10:35:27,126 INFO Avg inference time/event: 689781.14 ns
+2025-07-26 10:35:27,357 INFO GPU memory current: 56.0 MB, peak: 6219.0 MB
+2025-07-26 10:35:27,916 INFO Test Accuracy: 0.7930, ROC AUC: 0.9744
