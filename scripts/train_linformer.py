@@ -236,13 +236,7 @@ def parse_args():
     p.add_argument(
         "--convolution", action="store_true", help="Use convolution on attention scores"
     )
-    p.add_argument(
-        "--conv_filter_heights",
-        type=int,
-        nargs="+",
-        default=None,
-        help="List of convolution filter heights",
-    )
+    p.add_argument("--conv_filter_heights", type=int, nargs="+", default=[1, 3, 5], help="Comma separated list of filter heights, e.g. 1,3,5,7,9")
     p.add_argument(
         "--dataset", choices=["hls4ml", "top", "QG", "jetclass"], default="hls4ml"
     )

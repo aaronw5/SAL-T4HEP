@@ -16,6 +16,7 @@ Usage: $0 \
   [--num_particles N1,N2,...] \
   [--sort_by pt,eta,phi,delta_R,kt,cluster] \
   [--cluster_E] [--cluster_F] [--share_EF] [--convolution] \
+  [--conv_filter_heights N1,N2,...] \
   [--num_layers N] \
   [--shuffle_all N]      ### NEW
   [--shuffle_234 N]      ### NEW
@@ -38,7 +39,7 @@ SHUFFLE_ALL_FLAG=""     ### NEW
 SHUFFLE_234_FLAG=""     ### NEW
 NP_LIST=""
 SORT_MODES=""
-
+CONV_FILTER_HEIGHTS=""
 # Parse args
 while [[ $# -gt 0 ]]; do
   case $1 in
@@ -72,6 +73,8 @@ while [[ $# -gt 0 ]]; do
       SHARE_EF_FLAG="--share_EF"; shift;;
     --convolution)
       CONV_FLAG="--convolution"; shift;;
+    --conv_filter_heights)
+      CONV_FILTER_HEIGHTS_FLAG="--conv_filter_heights $2"; shift 2;;
     --num_layers)
       NUM_LAYERS_FLAG="--num_layers $2"; shift 2;;
     --shuffle_all)                         ### NEW
@@ -116,6 +119,7 @@ for NP in "${PARTICLES[@]}"; do
       $CLUSTER_F_FLAG \
       $SHARE_EF_FLAG \
       $CONV_FLAG \
+      $CONV_FILTER_HEIGHTS_FLAG \
       $NUM_LAYERS_FLAG \
       $SHUFFLE_ALL_FLAG \        ### NEW
       $SHUFFLE_234_FLAG          ### NEW
