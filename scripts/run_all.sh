@@ -117,25 +117,32 @@ for NP in "${PARTICLES[@]}"; do
     echo "=========================================="
     echo "Running dataset=$DATASET, num_particles=$NP, sort_by=$SORT"
     echo "=========================================="
-    python3 train_linformer.py \
-      --data_dir      "$DATA_DIR" \
-      --save_dir      "$SAVE_DIR" \
-      --dataset       "$DATASET" \
-      $BATCH_SIZE_FLAG \
-      $VAL_SPLIT_FLAG \
-      $D_MODEL_FLAG \
-      $D_FF_FLAG \
-      $HEADS_FLAG \
-      $PROJ_DIM_FLAG \
-      --num_particles "$NP" \
-      --sort_by       "$SORT" \
-      $CLUSTER_E_FLAG \
-      $CLUSTER_F_FLAG \
-      $SHARE_EF_FLAG \
-      $CONV_FLAG \
-      $CONV_FILTER_HEIGHTS_FLAG \
-      $NUM_LAYERS_FLAG \
-      $SHUFFLE_ALL_FLAG \        ### NEW
-      $SHUFFLE_234_FLAG          ### NEW
+    args=(
+      python3 train_linformer.py
+      --data_dir "$DATA_DIR"
+      --save_dir "$SAVE_DIR"
+      --dataset "$DATASET"
+      --num_particles "$NP"
+      --sort_by "$SORT"
+    )
+    # Append optional key/value flags (stored as two+ tokens)
+    [[ -n "$BATCH_SIZE_FLAG" ]] && args+=($BATCH_SIZE_FLAG)
+    [[ -n "$VAL_SPLIT_FLAG"  ]] && args+=($VAL_SPLIT_FLAG)
+    [[ -n "$D_MODEL_FLAG"    ]] && args+=($D_MODEL_FLAG)
+    [[ -n "$D_FF_FLAG"       ]] && args+=($D_FF_FLAG)
+    [[ -n "$HEADS_FLAG"      ]] && args+=($HEADS_FLAG)
+    [[ -n "$PROJ_DIM_FLAG"   ]] && args+=($PROJ_DIM_FLAG)
+    [[ -n "$NUM_LAYERS_FLAG" ]] && args+=($NUM_LAYERS_FLAG)
+    [[ -n "$SHUFFLE_ALL_FLAG" ]] && args+=($SHUFFLE_ALL_FLAG)    ### NEW
+    [[ -n "$SHUFFLE_234_FLAG" ]] && args+=($SHUFFLE_234_FLAG)    ### NEW
+    # Append boolean flags (single token when set)
+    [[ -n "$CLUSTER_E_FLAG"  ]] && args+=("$CLUSTER_E_FLAG")
+    [[ -n "$CLUSTER_F_FLAG"  ]] && args+=("$CLUSTER_F_FLAG")
+    [[ -n "$SHARE_EF_FLAG"   ]] && args+=("$SHARE_EF_FLAG")
+    [[ -n "$CONV_FLAG"       ]] && args+=("$CONV_FLAG")
+    # Append conv filter heights (multiple tokens)
+    [[ -n "$CONV_FILTER_HEIGHTS_FLAG" ]] && args+=($CONV_FILTER_HEIGHTS_FLAG)
+
+    "${args[@]}"
   done
 done
