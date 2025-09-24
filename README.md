@@ -6,11 +6,10 @@ This repository contains code and scripts to preprocess jet data and train effic
 
 ## 🛠️ Setup
 
-### 1. Clone the helper Repository
+### 1. Download and go into [the helper Repository](https://anonymous.4open.science/r/l1-jet-id-hls4ml-DBC0/)
 
 ```bash
-git clone https://github.com/JavierZhao/l1-jet-id-hls4ml
-cd l1-jet-id-hls4ml
+cd l1-jet-id-hls4ml-DBC0
 ```
 
 ### 2. Install Dependencies
@@ -21,7 +20,7 @@ pip install -e .
 ## 📦 Dataset Preparation
 To download and process the [hls4ml dataset](https://zenodo.org/records/3602260) :
 ```bash
-python l1-jet-id-hls4ml/fast_jetclass/data/prepare_hls4ml_data.py \
+python l1-jet-id-hls4ml-DBC0/fast_jetclass/data/prepare_hls4ml_data.py \
   --root PATH-TO-DATA-DIR \
   --nconst [16|32|150] \
   --feats ptetaphi \
