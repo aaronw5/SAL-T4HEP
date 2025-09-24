@@ -428,11 +428,7 @@ def main():
     # ]
     # reduced training schedule due to OOM
     schedule = [
-        (128, 200),
-        (256, 200),
-        (512, 200),
-        (1024, 200),
-        (2048, 600),
+        (512, 50)
     ]
 
     ce = 0
