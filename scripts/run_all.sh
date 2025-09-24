@@ -16,7 +16,7 @@ Usage: $0 \
   [--num_particles N1,N2,...] \
   [--sort_by pt,eta,phi,delta_R,kt,cluster] \
   [--cluster_E] [--cluster_F] [--share_EF] [--convolution] \
-  [--conv_filter_heights N1,N2,...] \
+  [--conv_filter_heights N1 N2 ...] \
   [--num_layers N] \
   [--shuffle_all N]      ### NEW
   [--shuffle_234 N]      ### NEW
@@ -74,7 +74,21 @@ while [[ $# -gt 0 ]]; do
     --convolution)
       CONV_FLAG="--convolution"; shift;;
     --conv_filter_heights)
-      CONV_FILTER_HEIGHTS_FLAG="--conv_filter_heights $2"; shift 2;;
+      # Collect all subsequent non-flag tokens as filter heights; accept forms like "1 3 5" or "[1, 3, 5]"
+      shift
+      CONV_FILTER_HEIGHTS_FLAG="--conv_filter_heights"
+      while [[ $# -gt 0 && ! $1 =~ ^-- ]]; do
+        tok="$1"
+        # strip commas and surrounding brackets
+        tok="${tok//,/}"
+        tok="${tok#\[}"
+        tok="${tok%\]}"
+        if [[ -n "$tok" ]]; then
+          CONV_FILTER_HEIGHTS_FLAG+=" $tok"
+        fi
+        shift
+      done
+      ;;
     --num_layers)
       NUM_LAYERS_FLAG="--num_layers $2"; shift 2;;
     --shuffle_all)                         ### NEW
