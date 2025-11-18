@@ -1,0 +1,19 @@
+PyTorch DeltaNet Results (150 particles, kt sorting)
+======================================================================
+Model Parameters: 1,769
+Test Accuracy: 0.6440
+Test ROC AUC: 0.8848
+Avg 1/FPR@0.8: 6.246
+
+Per-class 1/FPR@0.8:
+  g: 4.131
+  q: 4.749
+  W: 5.715
+  Z: 4.386
+  t: 12.249
+
+Background Rejection @0.8 (g+q background):
+  W: 13.308
+  Z: 16.386
+  t: 6.553
+  Average: 12.082

@@ -1,0 +1,18 @@
+DeltaNet Results (150 particles, kt sorting) - hls4ml test set
+======================================================================
+Test Accuracy: 0.8127
+Test ROC AUC: 0.9596
+Avg 1/FPR@0.8: 42.529
+
+Per-class 1/FPR@0.8:
+  g: 13.567
+  q: 9.628
+  W: 57.346
+  Z: 99.047
+  t: 33.058
+
+Background Rejection @0.8 (g+q background):
+  W: 91.850
+  Z: 89.766
+  t: 19.061
+  Average: 66.892

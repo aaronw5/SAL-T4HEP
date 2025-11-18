@@ -1,0 +1,49 @@
+2025-11-04 18:57:37,270 INFO Args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='../runs/test/', cluster_E=True, cluster_F=True, share_EF=False, convolution=True, conv_filter_heights=[1, 3, 5], dataset='hls4ml', sort_by='cluster', batch_size=1024, val_split=0.2, num_particles=150, d_model=16, d_ff=16, num_heads=4, proj_dim=4, num_layers=1, shuffle_all=0, shuffle_234=0, shuffle_34=0)
+2025-11-04 18:57:52,665 INFO Loaded train x=(496000, 150, 3) y=(496000, 5), val x=(124000, 150, 3) y=(124000, 5)
+2025-11-04 18:57:54,555 INFO Model: "model"
+2025-11-04 18:57:54,555 INFO _________________________________________________________________
+2025-11-04 18:57:54,555 INFO  Layer (type)                Output Shape              Param #   
+2025-11-04 18:57:54,555 INFO =================================================================
+2025-11-04 18:57:54,555 INFO  input_1 (InputLayer)        [(None, 150, 3)]          0         
+2025-11-04 18:57:54,555 INFO                                                                  
+2025-11-04 18:57:54,556 INFO  dense (Dense)               (None, 150, 16)           64        
+2025-11-04 18:57:54,556 INFO                                                                  
+2025-11-04 18:57:54,556 INFO  linformer_transformer_bloc  (None, 150, 16)           2843      
+2025-11-04 18:57:54,556 INFO  k (LinformerTransformerBlo                                      
+2025-11-04 18:57:54,556 INFO  ck)                                                             
+2025-11-04 18:57:54,556 INFO                                                                  
+2025-11-04 18:57:54,556 INFO  aggregation_layer (Aggrega  (None, 16)                0         
+2025-11-04 18:57:54,556 INFO  tionLayer)                                                      
+2025-11-04 18:57:54,556 INFO                                                                  
+2025-11-04 18:57:54,556 INFO  dense_3 (Dense)             (None, 16)                272       
+2025-11-04 18:57:54,556 INFO                                                                  
+2025-11-04 18:57:54,556 INFO  dense_4 (Dense)             (None, 5)                 85        
+2025-11-04 18:57:54,556 INFO                                                                  
+2025-11-04 18:57:54,556 INFO =================================================================
+2025-11-04 18:57:54,557 INFO Total params: 3264 (12.75 KB)
+2025-11-04 18:57:54,557 INFO Trainable params: 3264 (12.75 KB)
+2025-11-04 18:57:54,557 INFO Non-trainable params: 0 (0.00 Byte)
+2025-11-04 18:57:54,557 INFO _________________________________________________________________
+2025-11-04 18:57:54,557 INFO Total params: 3264
+2025-11-04 19:04:14,115 INFO Starting testing phase...
+2025-11-04 19:04:21,021 INFO Loaded TEST arrays for hls4ml: (260000, 150, 3), (260000, 5)
+2025-11-04 19:04:21,021 INFO Applied 'cluster' sorting to TEST set
+2025-11-04 19:04:21,232 WARNING From /opt/conda/lib/python3.11/site-packages/tensorflow/python/profiler/internal/flops_registry.py:453: tensor_shape_from_node_def_name (from tensorflow.python.framework.graph_util_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate for instructions on how to migrate your code to TensorFlow v2.
+2025-11-04 19:04:21,239 INFO FLOPs per inference: 739918
+2025-11-04 19:04:21,239 INFO MACs per inference: 369959
+2025-11-04 19:04:22,180 INFO Avg inference time/event: 31746.88 ns
+2025-11-04 19:04:22,430 INFO GPU memory current: 1079.7 MB, peak: 1151.4 MB
+2025-11-04 19:04:24,888 INFO Test Accuracy: 0.7847, ROC AUC: 0.9489
+2025-11-04 19:04:25,251 INFO 1/FPR@0.8 for q: 11.250
+2025-11-04 19:04:25,251 INFO 1/FPR@0.8 for g: 8.350
+2025-11-04 19:04:25,251 INFO 1/FPR@0.8 for W: 28.836
+2025-11-04 19:04:25,251 INFO 1/FPR@0.8 for Z: 32.833
+2025-11-04 19:04:25,251 INFO 1/FPR@0.8 for t: 25.241
+2025-11-04 19:04:25,251 INFO Avg 1/FPR@0.8: 21.302
+2025-11-04 19:04:25,268 INFO Bg rejection@0.8 g: 4.245
+2025-11-04 19:04:25,291 INFO Bg rejection@0.8 W: 49.198
+2025-11-04 19:04:25,314 INFO Bg rejection@0.8 Z: 41.818
+2025-11-04 19:04:25,337 INFO Bg rejection@0.8 t: 14.228
+2025-11-04 19:04:25,337 INFO Avg bg rejection@0.8: 27.372

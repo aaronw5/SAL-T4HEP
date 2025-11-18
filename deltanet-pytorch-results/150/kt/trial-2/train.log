@@ -1,0 +1,9 @@
+2025-10-24 11:23:43,237 INFO Args: Namespace(data_dir='/j-jepa-vol/l1-jet-id/data/jetid/processed', save_dir='/j-jepa-vol/SAL-T4HEP/deltanet-pytorch-results', dataset='hls4ml', sort_by='kt', val_split=0.2, num_particles=150, d_model=16, num_heads=4, num_layers=1, conv_size=4, use_short_conv=True, dropout=0.1)
+2025-10-24 11:23:43,238 INFO Using device: cuda
+2025-10-24 11:23:43,238 INFO CUDA device: NVIDIA GeForce RTX 2080 Ti
+2025-10-24 11:23:43,238 INFO Loading data...
+2025-10-24 11:23:57,729 INFO Loaded train x=(496000, 150, 3) y=(496000, 5), val x=(124000, 150, 3) y=(124000, 5)
+2025-10-24 11:24:03,752 INFO Applied 'kt' sorting
+2025-10-24 11:24:04,202 INFO Total params: 1705
+2025-10-24 11:24:04,202 INFO Trainable params: 1705
+2025-10-24 11:24:04,202 INFO Training with batch_size=128 for 200 epochs

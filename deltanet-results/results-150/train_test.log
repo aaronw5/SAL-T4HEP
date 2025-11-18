@@ -1,0 +1,31 @@
+2025-10-17 23:28:45,448 INFO Starting training for 150 particles
+2025-10-18 02:14:53,011 INFO Starting testing on hls4ml test set
+2025-10-18 02:14:59,544 INFO Loaded test set: x_test=(260000, 150, 3), y_test=(260000, 5)
+2025-10-18 02:15:04,350 INFO Applied kt sorting to test set
+2025-10-18 02:15:04,682 WARNING From /opt/conda/lib/python3.11/site-packages/tensorflow/python/profiler/internal/flops_registry.py:453: tensor_shape_from_node_def_name (from tensorflow.python.framework.graph_util_impl) is deprecated and will be removed in a future version.
+Instructions for updating:
+This API was designed for TensorFlow v1. See https://www.tensorflow.org/guide/migrate for instructions on how to migrate your code to TensorFlow v2.
+2025-10-18 02:15:04,701 INFO FLOPs per inference: 810718
+2025-10-18 02:15:04,702 INFO MACs per inference: 405359
+2025-10-18 02:15:06,304 INFO Avg inference time/event: 66972.24 ns
+2025-10-18 02:15:06,579 INFO GPU memory current: 4317.6 MB, peak: 5396.2 MB
+2025-10-18 02:15:12,381 INFO Test Accuracy: 0.8127
+2025-10-18 02:15:12,381 INFO Test ROC AUC: 0.9596
+2025-10-18 02:15:13,149 INFO Avg 1/FPR@0.8: 42.529
+2025-10-18 02:15:13,149 INFO 1/FPR @0.8 TPR for g: 13.567
+2025-10-18 02:15:13,149 INFO 1/FPR @0.8 TPR for q: 9.628
+2025-10-18 02:15:13,149 INFO 1/FPR @0.8 TPR for W: 57.346
+2025-10-18 02:15:13,149 INFO 1/FPR @0.8 TPR for Z: 99.047
+2025-10-18 02:15:13,149 INFO 1/FPR @0.8 TPR for t: 33.058
+2025-10-18 02:15:13,187 INFO Background rejection @0.8 for W: 91.850
+2025-10-18 02:15:13,224 INFO Background rejection @0.8 for Z: 89.766
+2025-10-18 02:15:13,261 INFO Background rejection @0.8 for t: 19.061
+2025-10-18 02:15:13,261 INFO Avg background rejection @0.8: 66.892
+2025-10-18 02:15:13,554 INFO Copied train_test.log to persistent storage
+2025-10-18 02:15:13,767 INFO Copied best.weights.h5 to persistent storage
+2025-10-18 02:15:13,959 INFO Copied final.weights.h5 to persistent storage
+2025-10-18 02:15:14,152 INFO Copied train_loss.npy to persistent storage
+2025-10-18 02:15:14,357 INFO Copied val_loss.npy to persistent storage
+2025-10-18 02:15:14,564 INFO Copied roc_curves.png to persistent storage
+2025-10-18 02:15:14,760 INFO Copied RESULTS.txt to persistent storage
+2025-10-18 02:15:14,761 INFO Completed

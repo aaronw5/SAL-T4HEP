@@ -1,0 +1,28 @@
+2025-10-21 22:29:08,925 INFO Using device: cuda
+2025-10-21 22:29:08,925 INFO CUDA device: NVIDIA GeForce RTX 2080 Ti
+2025-10-21 22:29:08,925 INFO Using dtype: bfloat16
+2025-10-21 22:29:09,278 INFO Model parameters: 1769
+2025-10-21 22:35:49,496 INFO Saved best model at epoch 1, val_loss=0.9990
+2025-10-21 22:37:21,585 INFO Saved best model at epoch 2, val_loss=0.9791
+2025-10-21 22:38:53,781 INFO Saved best model at epoch 3, val_loss=0.9715
+2025-10-21 22:40:26,252 INFO Saved best model at epoch 4, val_loss=0.9666
+2025-10-21 22:41:58,728 INFO Saved best model at epoch 5, val_loss=0.9644
+2025-10-21 22:43:31,234 INFO Saved best model at epoch 6, val_loss=0.9624
+2025-10-21 22:46:36,314 INFO Saved best model at epoch 8, val_loss=0.9609
+2025-10-21 22:48:08,870 INFO Saved best model at epoch 9, val_loss=0.9594
+2025-10-21 22:49:41,360 INFO Saved best model at epoch 10, val_loss=0.9587
+2025-10-21 22:51:13,836 INFO Saved best model at epoch 11, val_loss=0.9579
+2025-10-21 22:52:46,649 INFO Saved best model at epoch 12, val_loss=0.9563
+2025-10-21 22:55:51,988 INFO Saved best model at epoch 14, val_loss=0.9556
+2025-10-21 22:57:24,716 INFO Saved best model at epoch 15, val_loss=0.9549
+2025-10-21 23:02:03,201 INFO Saved best model at epoch 18, val_loss=0.9549
+2025-10-21 23:05:08,200 INFO Saved best model at epoch 20, val_loss=0.9540
+2025-10-21 23:06:41,265 INFO Saved best model at epoch 21, val_loss=0.9536
+2025-10-21 23:09:47,280 INFO Saved best model at epoch 23, val_loss=0.9528
+2025-10-21 23:12:52,322 INFO Saved best model at epoch 25, val_loss=0.9528
+2025-10-23 12:35:00,825 INFO Test Accuracy: 0.6440
+2025-10-23 12:35:00,826 INFO Test ROC AUC: 0.8848
+2025-10-23 12:35:01,349 INFO Avg 1/FPR@0.8: 6.246
+2025-10-23 12:35:01,369 INFO Background rejection @0.8 for W: 13.308
+2025-10-23 12:35:01,388 INFO Background rejection @0.8 for Z: 16.386
+2025-10-23 12:35:01,415 INFO Background rejection @0.8 for t: 6.553

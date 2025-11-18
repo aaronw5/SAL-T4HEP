@@ -1,0 +1,32 @@
+DeltaNet PyTorch Results (150 particles, kt sorting) - hls4ml test set
+======================================================================
+
+Model Architecture:
+  Total Parameters: 1,705
+  Inference time per event: 48274.39 ns (48.27 µs)
+  GPU memory (current/peak): 233.2 MB / 1269.1 MB
+
+Classification Performance:
+  Test Accuracy: 0.6162 (61.62%)
+  Test ROC AUC (macro): 0.8703
+  Avg 1/FPR@0.8 TPR: 5.712
+
+Per-class 1/FPR@0.8 TPR:
+  g: 4.012
+  q: 4.163
+  W: 4.217
+  Z: 3.796
+  t: 12.374
+
+Background Rejection @0.8 TPR (g+q as background):
+  W: 10.514
+  Z: 12.258
+  t: 6.923
+  Average: 9.899
+
+======================================================================
+Methodology:
+- All metrics calculated using sklearn.metrics (accuracy_score, roc_curve, auc, roc_auc_score)
+- Inference time: average of 20 runs on batch_size=4096 with CUDA synchronization
+- GPU memory measured via torch.cuda.memory_allocated() and max_memory_allocated()
+- Test set: 260,000 samples from x_val_robust_150const_ptetaphi.npy
