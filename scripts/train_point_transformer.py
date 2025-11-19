@@ -25,7 +25,7 @@ from sklearn.metrics import accuracy_score, roc_curve, auc, roc_auc_score
 import matplotlib.pyplot as plt
 
 # import model builder
-from models.PointTransformerV3TF import build_pointtransformer_v3_classifier
+from models.PointTransformerV3TF import build_ptv3_jet_classifier
 
 
 # ---------------------------
@@ -264,24 +264,23 @@ def parse_args():
 		p.add_argument(
 				"--sort_by",
 				choices=["pt", "eta", "phi", "delta_R", "kt", "cluster"],
-				default="pt",
+				default="kt",
 		)
 		p.add_argument("--batch_size", type=int, default=4096)
 		p.add_argument("--val_split", type=float, default=0.2)
-		p.add_argument(
-				"--num_particles", type=int, help="Ignored for 'jetclass'; use default"
-		)
 
 		# Model hyperparameters
-		p.add_argument("--enc_dims", type=int, nargs="+", default=[64, 128, 256])
-		p.add_argument("--enc_layers", type=int, nargs="+", default=[2, 2, 2])
-		p.add_argument("--enc_heads", type=int, nargs="+", default=[4, 8, 8])
-		p.add_argument("--enc_patch_sizes", type=int, nargs="+", default=None)
+		p.add_argument("--enc_dims", type=int, nargs="+", default=[12, 24, 32])
+		p.add_argument("--enc_layers", type=int, nargs="+", default=[1, 1, 1])
+		p.add_argument("--enc_heads", type=int, nargs="+", default=[4, 4, 4])
+		p.add_argument("--enc_patch_sizes", type=int, nargs="+", default=[2, 2, 2])
 		p.add_argument("--enc_strides", type=int, nargs="+", default=[2, 2])
-		p.add_argument("--cpe_kernel", type=int, default=3)
+		p.add_argument("--cpe_k", type=int, default=8)
 		p.add_argument("--use_rpe", action="store_true")
+		p.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 		p.add_argument("--dropout", type=float, default=0.0)
 		p.add_argument("--aggregation", choices=["mean", "max"], default="max")
+		p.add_argument("--model_size", choices=["small", "medium", "large"], default="small")
 		return p.parse_args()
 
 
@@ -302,7 +301,7 @@ def main():
 				output_dim = 1
 				loss_fn = "binary_crossentropy"
 		else:  # hls4ml
-				num_particles = args.num_particles
+				num_particles = 150
 				output_dim = 5
 				loss_fn = "categorical_crossentropy"
 
@@ -363,39 +362,33 @@ def main():
 		x_train = apply_sorting(x_train, args.sort_by)
 		x_val = apply_sorting(x_val, args.sort_by)
 
-		# derive patch sizes if not provided
-		stage_lengths = compute_stage_lengths(num_particles, args.enc_strides)
-		if args.enc_patch_sizes is None:
-				enc_patch_sizes = choose_divisible_patch_sizes(stage_lengths)
-				logging.info("Auto-selected enc_patch_sizes per stage lengths %s -> %s",
-											stage_lengths, enc_patch_sizes)
-		else:
-				enc_patch_sizes = args.enc_patch_sizes
-				if len(enc_patch_sizes) != len(stage_lengths):
-						logging.warning("enc_patch_sizes length does not match stages; will trim/pad with 1s.")
-						enc_patch_sizes = (enc_patch_sizes + [1] * len(stage_lengths))[: len(stage_lengths)]
-				# sanity: ensure divisibility; adjust to 1 if needed
-				adjusted = []
-				for L, P in zip(stage_lengths, enc_patch_sizes):
-						if L % P != 0:
-								logging.warning("Stage length %d not divisible by patch size %d. Using 1.", L, P)
-								adjusted.append(1)
-						else:
-								adjusted.append(P)
-				enc_patch_sizes = adjusted
+		# select preset
+		presets = {
+    		"small":  dict(enc_dims=[16], enc_layers=[1], enc_heads=[4], enc_strides=[2], enc_patch_sizes=[2], cpe_k=8, use_rpe=False),
+    		"medium": dict(enc_dims=[12, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[2, 2, 2], cpe_k=8, use_rpe=False),
+    		"large":  dict(enc_dims=[16, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[2, 2, 2], cpe_k=8, use_rpe=False),
+    	}
+		cfg = presets[args.model_size]
+		enc_dims = cfg["enc_dims"]
+		enc_layers = cfg["enc_layers"]
+		enc_heads = cfg["enc_heads"]
+		enc_strides = cfg["enc_strides"]
+		enc_patch_sizes = cfg["enc_patch_sizes"]
+		cpe_k = cfg["cpe_k"] if args.cpe_k is None else args.cpe_k
+		use_rpe = args.use_rpe or cfg["use_rpe"]
 
 		# build and compile model
-		model = build_pointtransformer_v3_classifier(
+		model = build_ptv3_jet_classifier(
 				num_particles=num_particles,
-				feature_dim=x_train.shape[2],
 				output_dim=output_dim,
-				enc_dims=args.enc_dims,
-				enc_layers=args.enc_layers,
-				enc_heads=args.enc_heads,
+				enc_dims=enc_dims,
+				enc_layers=enc_layers,
+				enc_heads=enc_heads,
 				enc_patch_sizes=enc_patch_sizes,
-				enc_strides=args.enc_strides,
-				cpe_kernel=args.cpe_kernel,
-				use_rpe=args.use_rpe,
+				enc_strides=enc_strides,
+				cpe_k=cpe_k,
+				use_rpe=use_rpe,
+				use_pool=(not args.disable_pool),
 				dropout=args.dropout,
 				aggregation=args.aggregation,
 		)
@@ -418,10 +411,14 @@ def main():
 				monitor="val_loss", patience=40, restore_best_weights=True, verbose=1
 		)
 
-		# training schedule (reduced for memory)
 		schedule = [
-				(512, 50)
-		]
+        (128, 200),
+        (256, 200),
+        (512, 200),
+        (1024, 200),
+        (2048, 200),
+        (4096, 400),
+    	]
 
 		ce = 0
 		histories = []

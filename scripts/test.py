@@ -35,6 +35,7 @@ from models.Transformer import (
 )
 
 
+
 def profile_gpu_memory_during_inference(model: tf.keras.Model, input_data: np.ndarray) -> tuple[float, float]:
     logging.info("Starting GPU memory profiling")
     tf.config.experimental.reset_memory_stats('GPU:0')
