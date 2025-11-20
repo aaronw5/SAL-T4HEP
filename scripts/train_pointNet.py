@@ -315,8 +315,13 @@ def main():
 
     # training schedule (kept conservative)
     schedule = [
-        (512, 50)
-    ]
+        (128, 200),
+        (256, 200),
+        (512, 200),
+        (1024, 200),
+        (2048, 200),
+        (4096, 400),
+    	]
 
     ce = 0
     histories = []
