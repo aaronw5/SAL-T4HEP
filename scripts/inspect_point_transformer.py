@@ -113,6 +113,7 @@ def parse_args():
     p.add_argument("--enc_patch_sizes", type=int, nargs="+", default=[2, 2, 2])
     p.add_argument("--enc_strides", type=int, nargs="+", default=[2, 2])
     p.add_argument("--cpe_k", type=int, default=8)
+    p.add_argument("--grid_size", type=float, default=0.2, help="GeometricCPE grid size (coarser -> smaller grid)")
     p.add_argument("--use_rpe", action="store_true", default=False)
     p.add_argument("--disable_pool", action="store_true", default=False, help="Disable GeometricPooling between stages")
     p.add_argument("--dropout", type=float, default=0.0)
@@ -153,6 +154,7 @@ def main():
             enc_patch_sizes=enc_patch_sizes,
             enc_strides=enc_strides,
             cpe_k=cpe_k,
+            grid_size=args.grid_size,
             use_rpe=use_rpe,
             use_pool=(not args.disable_pool),
             dropout=args.dropout,

@@ -233,9 +233,9 @@ class PatchedAttention(layers.Layer):
 
 class PTv3Block(layers.Layer):
     """Transformer block with CPE."""
-    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, dropout=0.0, use_rpe=False, **kwargs):
+    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, **kwargs):
         super().__init__(**kwargs)
-        self.cpe = GeometricCPE(d_model, kernel_size=cpe_k)
+        self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
         self.attn = PatchedAttention(d_model, num_heads, patch_size, dropout=dropout, use_rpe=use_rpe)
         self.drop1 = layers.Dropout(dropout)
@@ -323,6 +323,7 @@ def build_ptv3_jet_classifier(
     enc_patch_sizes=[64, 32, 16],
     enc_strides=[2, 2],
     cpe_k=8,
+    grid_size=0.05,
     use_rpe=False,
     use_pool=True,
     dropout=0.0,
@@ -349,6 +350,7 @@ def build_ptv3_jet_classifier(
                 num_heads=enc_heads[i],
                 patch_size=enc_patch_sizes[i],
                 cpe_k=cpe_k,
+                grid_size=grid_size,
                 dropout=dropout,
                 use_rpe=use_rpe,
             )([x, coords])

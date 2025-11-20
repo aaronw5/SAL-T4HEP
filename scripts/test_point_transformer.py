@@ -116,6 +116,7 @@ def main():
 	parser.add_argument("--model_size", choices=["small", "medium", "large"], default="small")
 	parser.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 	parser.add_argument("--use_rpe", action="store_true", help="Enable RPE regardless of preset")
+	parser.add_argument("--grid_size", type=float, default=0.05, help="GeometricCPE grid size (coarser -> smaller grid)")
 	parser.add_argument("--weights", help="Path to weights .h5 file (defaults to save_dir/best.weights.h5)")
 	args = parser.parse_args()
 
@@ -160,6 +161,7 @@ def main():
 		enc_patch_sizes=enc_patch_sizes,
 		enc_strides=enc_strides,
 		cpe_k=cpe_k,
+		grid_size=args.grid_size,
 		use_rpe=use_rpe,
 		use_pool=(not args.disable_pool),
 		dropout=0.0,
