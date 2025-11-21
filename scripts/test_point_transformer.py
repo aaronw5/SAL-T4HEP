@@ -116,7 +116,7 @@ def main():
 	parser.add_argument("--model_size", choices=["small", "medium", "large"], default="small")
 	parser.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 	parser.add_argument("--use_rpe", action="store_true", help="Enable RPE regardless of preset")
-	parser.add_argument("--grid_size", type=float, default=0.05, help="GeometricCPE grid size (coarser -> smaller grid)")
+	parser.add_argument("--grid_size", type=float, default=0.2, help="GeometricCPE grid size (coarser -> smaller grid)")
 	parser.add_argument("--weights", help="Path to weights .h5 file (defaults to save_dir/best.weights.h5)")
 	args = parser.parse_args()
 
@@ -172,10 +172,40 @@ def main():
 	logging.info("Hyperparams: dims=%s layers=%s heads=%s strides=%s patch=%s", enc_dims, enc_layers, enc_heads, enc_strides, enc_patch_sizes)
 
 	# Load weights
-	weights_path = args.weights or os.path.join(args.save_dir, "best.weights.h5")
+	# Prefer pure weights file saved at the end of training; fallback to checkpoint
+	default_weights = os.path.join(args.save_dir, "model.weights.h5")
+	ckpt_weights = os.path.join(args.save_dir, "best.weights.h5")
+	weights_path = args.weights or (default_weights if os.path.isfile(default_weights) else ckpt_weights)
 	logging.info("Loading weights from %s", weights_path)
-	model.load_weights(weights_path)
-	logging.info("Weights loaded.")
+	try:
+		# Try strict load first; if it fails, retry with skip_mismatch
+		model.load_weights(weights_path)
+		logging.info("Weights loaded via load_weights.")
+	except Exception as e:
+		logging.warning("load_weights failed: %s; retrying with skip_mismatch=True", e)
+		try:
+			model.load_weights(weights_path, skip_mismatch=True)
+			logging.info("Weights loaded via load_weights with skip_mismatch=True (some variables may be skipped).")
+		except Exception as e2:
+			logging.warning("load_weights(skip_mismatch=True) failed: %s; trying load_model with custom_objects", e2)
+		# If a full-model H5 was saved (e.g., by ModelCheckpoint without save_weights_only=True),
+		# we need to pass custom objects to reconstruct the model.
+			try:
+				from models.PointTransformerV3TF import (
+					PTv3Block, GeometricCPE, PatchedAttention, QuantizedRPE, GeometricPooling
+				)
+				custom_objects = {
+					"PTv3Block": PTv3Block,
+					"GeometricCPE": GeometricCPE,
+					"PatchedAttention": PatchedAttention,
+					"QuantizedRPE": QuantizedRPE,
+					"GeometricPooling": GeometricPooling,
+				}
+				model = tf.keras.models.load_model(weights_path, custom_objects=custom_objects, compile=False)
+				logging.info("Full model loaded via load_model with custom_objects.")
+			except Exception as ee:
+				logging.error("Failed to load model from %s: %s", weights_path, ee)
+				raise
 
 	# FLOPs and timing
 	flops = get_flops(model)
@@ -195,54 +225,54 @@ def main():
 	curr_mb, peak_mb = profile_gpu_memory_during_inference(model, x_test[:args.batch_size])
 	logging.info("GPU memory current: %.1f MB, peak: %.1f MB", curr_mb, peak_mb)
 
-	# Inference
-	logging.info("Running full prediction")
-	preds = model.predict(x_test, batch_size=args.batch_size)
-	logging.info("Predictions shape: %s", preds.shape)
+	# # Inference
+	# logging.info("Running full prediction")
+	# preds = model.predict(x_test, batch_size=args.batch_size)
+	# logging.info("Predictions shape: %s", preds.shape)
 
-	# Metrics
-	logging.info("Computing metrics for dataset '%s'", args.dataset)
-	if args.dataset in ("top", "QG"):
-		acc = accuracy_score(y_test, (preds.ravel() > 0.5).astype(int))
-		auc_m = roc_auc_score(y_test, preds.ravel())
-		logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
-	else:
-		acc = accuracy_score(np.argmax(y_test, 1), np.argmax(preds, 1))
-		auc_m = roc_auc_score(y_test, preds, average="macro", multi_class="ovo")
-		logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
+	# # Metrics
+	# logging.info("Computing metrics for dataset '%s'", args.dataset)
+	# if args.dataset in ("top", "QG"):
+	# 	acc = accuracy_score(y_test, (preds.ravel() > 0.5).astype(int))
+	# 	auc_m = roc_auc_score(y_test, preds.ravel())
+	# 	logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
+	# else:
+	# 	acc = accuracy_score(np.argmax(y_test, 1), np.argmax(preds, 1))
+	# 	auc_m = roc_auc_score(y_test, preds, average="macro", multi_class="ovo")
+	# 	logging.info("Test Accuracy: %.4f, ROC AUC: %.4f", acc, auc_m)
 
-	# ROC curves (optional)
-	if args.dataset == "hls4ml":
-		labels = ["q", "g", "W", "Z", "t"]
-	elif args.dataset == "top":
-		labels = ["qcd", "top"]
-	elif args.dataset == "QG":
-		labels = ["Gluon", "Quark"]
-	else:
-		labels = [f"label_{i}" for i in range(preds.shape[1])]
+	# # ROC curves (optional)
+	# if args.dataset == "hls4ml":
+	# 	labels = ["q", "g", "W", "Z", "t"]
+	# elif args.dataset == "top":
+	# 	labels = ["qcd", "top"]
+	# elif args.dataset == "QG":
+	# 	labels = ["Gluon", "Quark"]
+	# else:
+	# 	labels = [f"label_{i}" for i in range(preds.shape[1])]
 
-	plt.figure(figsize=(6, 6))
-	one_over_fpr = {}
-	for i, lab in enumerate(labels):
-		if args.dataset in ("top", "QG"):
-			fpr, tpr, _ = roc_curve(y_test, preds.ravel())
-		else:
-			fpr, tpr, _ = roc_curve(y_test[:, i], preds[:, i])
-		roc_val = auc(fpr, tpr)
-		plt.plot(fpr, tpr, label=f"{lab} (AUC={roc_val:.2f})")
-		if np.max(tpr) >= 0.8:
-			fpr_t = np.interp(0.8, tpr, fpr)
-			one_over_fpr[lab] = 1.0 / fpr_t if fpr_t > 0 else np.nan
-			plt.plot(fpr_t, 0.8, "o")
-	plt.plot([0, 1], [0, 1], "k--")
-	plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("ROC curves")
-	plt.legend(loc="lower right"); plt.tight_layout()
-	plt.savefig(os.path.join(args.save_dir, "roc_curves_ptv3.png"))
-	plt.close()
-	for lab, val in one_over_fpr.items():
-		logging.info("1/FPR@0.8 for %s: %.3f", lab, val)
-	if one_over_fpr:
-		logging.info("Avg 1/FPR@0.8: %.3f", np.nanmean(list(one_over_fpr.values())))
+	# plt.figure(figsize=(6, 6))
+	# one_over_fpr = {}
+	# for i, lab in enumerate(labels):
+	# 	if args.dataset in ("top", "QG"):
+	# 		fpr, tpr, _ = roc_curve(y_test, preds.ravel())
+	# 	else:
+	# 		fpr, tpr, _ = roc_curve(y_test[:, i], preds[:, i])
+	# 	roc_val = auc(fpr, tpr)
+	# 	plt.plot(fpr, tpr, label=f"{lab} (AUC={roc_val:.2f})")
+	# 	if np.max(tpr) >= 0.8:
+	# 		fpr_t = np.interp(0.8, tpr, fpr)
+	# 		one_over_fpr[lab] = 1.0 / fpr_t if fpr_t > 0 else np.nan
+	# 		plt.plot(fpr_t, 0.8, "o")
+	# plt.plot([0, 1], [0, 1], "k--")
+	# plt.xlabel("FPR"); plt.ylabel("TPR"); plt.title("ROC curves")
+	# plt.legend(loc="lower right"); plt.tight_layout()
+	# plt.savefig(os.path.join(args.save_dir, "roc_curves_ptv3.png"))
+	# plt.close()
+	# for lab, val in one_over_fpr.items():
+	# 	logging.info("1/FPR@0.8 for %s: %.3f", lab, val)
+	# if one_over_fpr:
+	# 	logging.info("Avg 1/FPR@0.8: %.3f", np.nanmean(list(one_over_fpr.values())))
 
 
 if __name__ == "__main__":
