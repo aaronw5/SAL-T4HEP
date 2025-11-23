@@ -419,6 +419,7 @@ def main():
 				optimizer=tf.keras.optimizers.Adam(),
 				loss=loss_fn,
 				metrics=["accuracy"],
+				jit_compile=True
 		)
 		model.summary(print_fn=lambda l: logging.info(l))
 		logging.info("Total params: %d", model.count_params())
