@@ -26,6 +26,7 @@ import matplotlib.pyplot as plt
 
 # import model builder
 from models.PointTransformerV3TF import build_ptv3_jet_classifier
+from models.PointTransformer_serialized import build_ptv3_serialized_jet_classifier
 
 
 # ---------------------------
@@ -282,6 +283,8 @@ def parse_args():
 		p.add_argument("--dropout", type=float, default=0.0)
 		p.add_argument("--aggregation", choices=["mean", "max"], default="max")
 		p.add_argument("--model_size", choices=["small", "medium", "large"], default="small")
+		p.add_argument('--use_serialized_model', action='store_true', help='Use the serialized version of the PointTransformer model')
+		p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
 		return p.parse_args()
 
 
@@ -379,7 +382,8 @@ def main():
 		use_rpe = args.use_rpe or cfg["use_rpe"]
 
 		# build and compile model
-		model = build_ptv3_jet_classifier(
+		if args.use_serialized_model:
+			model = build_ptv3_serialized_jet_classifier(
 				num_particles=num_particles,
 				output_dim=output_dim,
 				enc_dims=enc_dims,
@@ -393,7 +397,24 @@ def main():
 				use_pool=(not args.disable_pool),
 				dropout=args.dropout,
 				aggregation=args.aggregation,
-		)
+				serialize_by=args.serialize_by,
+			)
+		else:
+			model = build_ptv3_jet_classifier(
+				num_particles=num_particles,
+				output_dim=output_dim,
+				enc_dims=enc_dims,
+				enc_layers=enc_layers,
+				enc_heads=enc_heads,
+				enc_patch_sizes=enc_patch_sizes,
+				enc_strides=enc_strides,
+				cpe_k=cpe_k,
+				grid_size=args.grid_size,
+				use_rpe=use_rpe,
+				use_pool=(not args.disable_pool),
+				dropout=args.dropout,
+				aggregation=args.aggregation,
+			)
 		model.compile(
 				optimizer=tf.keras.optimizers.Adam(),
 				loss=loss_fn,

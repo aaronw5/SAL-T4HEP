@@ -18,6 +18,7 @@ if PROJECT_ROOT not in sys.path:
 		sys.path.insert(0, PROJECT_ROOT)
 
 from models.PointTransformerV3TF import build_ptv3_jet_classifier
+from models.PointTransformer_serialized import build_ptv3_serialized_jet_classifier
 
 
 def get_flops(model, input_shape):
@@ -120,6 +121,8 @@ def parse_args():
     p.add_argument("--aggregation", choices=["mean", "max"], default="max")
     p.add_argument("--output_dim", type=int, default=5)
     p.add_argument("--model_size", choices=["small", "medium", "large"], default="small")
+    p.add_argument('--use_serialized_model', action='store_true', help='Use the serialized version of the PointTransformer model')
+    p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
 
     return p.parse_args()
 
@@ -145,7 +148,8 @@ def main():
     use_rpe = args.use_rpe or cfg["use_rpe"]
 
     # build model
-    model = build_ptv3_jet_classifier(
+    if args.use_serialized_model:
+        model = build_ptv3_serialized_jet_classifier(
             num_particles=args.num_particles,
             output_dim=args.output_dim,
             enc_dims=enc_dims,
@@ -159,7 +163,24 @@ def main():
             use_pool=(not args.disable_pool),
             dropout=args.dropout,
             aggregation=args.aggregation,
-    )
+            serialize_by=args.serialize_by,
+        )
+    else:
+        model = build_ptv3_jet_classifier(
+            num_particles=args.num_particles,
+            output_dim=args.output_dim,
+            enc_dims=enc_dims,
+            enc_layers=enc_layers,
+            enc_heads=enc_heads,
+            enc_patch_sizes=enc_patch_sizes,
+            enc_strides=enc_strides,
+            cpe_k=cpe_k,
+            grid_size=args.grid_size,
+            use_rpe=use_rpe,
+            use_pool=(not args.disable_pool),
+            dropout=args.dropout,
+            aggregation=args.aggregation,
+        )
 
     # params
     params = model.count_params()
