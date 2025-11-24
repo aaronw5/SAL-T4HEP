@@ -282,7 +282,7 @@ def parse_args():
 		p.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 		p.add_argument("--dropout", type=float, default=0.0)
 		p.add_argument("--aggregation", choices=["mean", "max"], default="max")
-		p.add_argument("--model_size", choices=["small", "medium", "large"], default="small")
+		p.add_argument("--model_size", choices=["small", "matched", "medium", "large"], default="small")
 		p.add_argument('--use_serialized_model', action='store_true', help='Use the serialized version of the PointTransformer model')
 		p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
 		return p.parse_args()
@@ -369,6 +369,7 @@ def main():
 		# select preset
 		presets = {
 			"small":  dict(enc_dims=[16], enc_layers=[1], enc_heads=[4], enc_strides=[2], enc_patch_sizes=[25], cpe_k=8, use_rpe=False),
+    		"matched": dict(enc_dims=[16, 24], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
     		"medium": dict(enc_dims=[12, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     		"large":  dict(enc_dims=[16, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     	}
