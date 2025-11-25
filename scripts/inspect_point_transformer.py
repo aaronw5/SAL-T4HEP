@@ -134,7 +134,7 @@ def main():
     # presets for small / medium / large
     presets = {
 			"small":  dict(enc_dims=[16], enc_layers=[1], enc_heads=[4], enc_strides=[2], enc_patch_sizes=[25], cpe_k=8, use_rpe=False),
-    		"matched": dict(enc_dims=[16, 24], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
+    		"matched": dict(enc_dims=[12, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
             "medium": dict(enc_dims=[12, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     		"large":  dict(enc_dims=[16, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     	}
