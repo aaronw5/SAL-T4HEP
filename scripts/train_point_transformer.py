@@ -282,7 +282,7 @@ def parse_args():
 		p.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 		p.add_argument("--dropout", type=float, default=0.0)
 		p.add_argument("--aggregation", choices=["mean", "max"], default="max")
-		p.add_argument("--model_size", choices=["small", "small_2layer", "matched", "medium", "large"], default="small")
+		p.add_argument("--model_size", choices=["small", "small_2layer_no_downsamp", "small_2layer_2_downsamp", "matched", "medium", "large"], default="small")
 		p.add_argument('--use_serialized_model', action='store_true', help='Use the serialized version of the PointTransformer model')
 		p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
 		return p.parse_args()
