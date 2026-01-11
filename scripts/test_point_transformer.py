@@ -18,6 +18,7 @@ from sklearn.metrics import accuracy_score, roc_curve, auc, roc_auc_score
 import matplotlib.pyplot as plt
 
 from models.PointTransformerV3TF import build_ptv3_jet_classifier
+from models.PointTransformer_serialized import build_ptv3_serialized_jet_classifier
 
 
 def profile_gpu_memory_during_inference(model: tf.keras.Model, input_data: np.ndarray) -> tuple[float, float]:
@@ -119,6 +120,17 @@ def main():
 	parser.add_argument("--use_rpe", action="store_true", help="Enable RPE regardless of preset")
 	parser.add_argument("--grid_size", type=float, default=0.2, help="GeometricCPE grid size (coarser -> smaller grid)")
 	parser.add_argument("--weights", help="Path to weights .h5 file (defaults to save_dir/best.weights.h5)")
+	parser.add_argument(
+		"--use_serialized_model",
+		action="store_true",
+		help="Use the serialized PTv3 variant from PointTransformer_serialized",
+	)
+	parser.add_argument(
+		"--serialize_by",
+		choices=["morton", "pt", "kt"],
+		default="morton",
+		help="Serialization strategy for the serialized PTv3 model",
+	)
 	args = parser.parse_args()
 
 	# Logging
@@ -153,21 +165,40 @@ def main():
 	cpe_k = cfg["cpe_k"]
 	use_rpe = args.use_rpe or cfg["use_rpe"]
 
-	model = build_ptv3_jet_classifier(
-		num_particles=num_particles,
-		output_dim=output_dim,
-		enc_dims=enc_dims,
-		enc_layers=enc_layers,
-		enc_heads=enc_heads,
-		enc_patch_sizes=enc_patch_sizes,
-		enc_strides=enc_strides,
-		cpe_k=cpe_k,
-		grid_size=args.grid_size,
-		use_rpe=use_rpe,
-		use_pool=(not args.disable_pool),
-		dropout=0.0,
-		aggregation="max",
-	)
+	# Build model: standard vs. serialized PTv3
+	if args.use_serialized_model:
+		model = build_ptv3_serialized_jet_classifier(
+			num_particles=num_particles,
+			output_dim=output_dim,
+			enc_dims=enc_dims,
+			enc_layers=enc_layers,
+			enc_heads=enc_heads,
+			enc_patch_sizes=enc_patch_sizes,
+			enc_strides=enc_strides,
+			cpe_k=cpe_k,
+			grid_size=args.grid_size,
+			use_rpe=use_rpe,
+			dropout=0.0,
+			aggregation="max",
+			serialize_by=args.serialize_by,
+			use_pool=(not args.disable_pool),
+		)
+	else:
+		model = build_ptv3_jet_classifier(
+			num_particles=num_particles,
+			output_dim=output_dim,
+			enc_dims=enc_dims,
+			enc_layers=enc_layers,
+			enc_heads=enc_heads,
+			enc_patch_sizes=enc_patch_sizes,
+			enc_strides=enc_strides,
+			cpe_k=cpe_k,
+			grid_size=args.grid_size,
+			use_rpe=use_rpe,
+			use_pool=(not args.disable_pool),
+			dropout=0.0,
+			aggregation="max",
+		)
 	model.summary(print_fn=lambda s: logging.info(s))
 	logging.info("Preset: %s", args.model_size)
 	logging.info("Hyperparams: dims=%s layers=%s heads=%s strides=%s patch=%s", enc_dims, enc_layers, enc_heads, enc_strides, enc_patch_sizes)
@@ -189,20 +220,45 @@ def main():
 			logging.info("Weights loaded via load_weights with skip_mismatch=True (some variables may be skipped).")
 		except Exception as e2:
 			logging.warning("load_weights(skip_mismatch=True) failed: %s; trying load_model with custom_objects", e2)
-		# If a full-model H5 was saved (e.g., by ModelCheckpoint without save_weights_only=True),
-		# we need to pass custom objects to reconstruct the model.
+			# If a full-model H5 was saved (e.g., by ModelCheckpoint without save_weights_only=True),
+			# we need to pass custom objects to reconstruct the model.
 			try:
-				from models.PointTransformerV3TF import (
-					PTv3Block, GeometricCPE, PatchedAttention, QuantizedRPE, GeometricPooling
+				if args.use_serialized_model:
+					from models.PointTransformer_serialized import (
+						PTv3Block as SerializedPTv3Block,
+						GeometricCPE as SerializedGeometricCPE,
+						PatchedAttention as SerializedPatchedAttention,
+						QuantizedRPE as SerializedQuantizedRPE,
+						SerializedPooling2D,
+						Serialization2D,
+					)
+					custom_objects = {
+						"PTv3Block": SerializedPTv3Block,
+						"GeometricCPE": SerializedGeometricCPE,
+						"PatchedAttention": SerializedPatchedAttention,
+						"QuantizedRPE": SerializedQuantizedRPE,
+						"SerializedPooling2D": SerializedPooling2D,
+						"Serialization2D": Serialization2D,
+					}
+				else:
+					from models.PointTransformerV3TF import (
+						PTv3Block,
+						GeometricCPE,
+						PatchedAttention,
+						QuantizedRPE,
+						GeometricPooling,
+					)
+					custom_objects = {
+						"PTv3Block": PTv3Block,
+						"GeometricCPE": GeometricCPE,
+						"PatchedAttention": PatchedAttention,
+						"QuantizedRPE": QuantizedRPE,
+						"GeometricPooling": GeometricPooling,
+					}
+
+				model = tf.keras.models.load_model(
+					weights_path, custom_objects=custom_objects, compile=False
 				)
-				custom_objects = {
-					"PTv3Block": PTv3Block,
-					"GeometricCPE": GeometricCPE,
-					"PatchedAttention": PatchedAttention,
-					"QuantizedRPE": QuantizedRPE,
-					"GeometricPooling": GeometricPooling,
-				}
-				model = tf.keras.models.load_model(weights_path, custom_objects=custom_objects, compile=False)
 				logging.info("Full model loaded via load_model with custom_objects.")
 			except Exception as ee:
 				logging.error("Failed to load model from %s: %s", weights_path, ee)

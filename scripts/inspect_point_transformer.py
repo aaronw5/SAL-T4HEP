@@ -21,10 +21,146 @@ from models.PointTransformerV3TF import build_ptv3_jet_classifier
 from models.PointTransformer_serialized import build_ptv3_serialized_jet_classifier
 
 
+def estimate_flops_from_runtime(model, concrete_input):
+    """
+    Estimate hardware-agnostic theoretical FLOPs by tracing through the model.
+    Calculates FLOPs based on mathematical operations, not GPU/FPGA specifics.
+
+    For each operation, we count multiply-add pairs (MACs) as 2 FLOPs.
+    This gives hardware-independent theoretical complexity.
+    """
+    # Create intermediate models to capture shapes
+    x = concrete_input
+    coords = x[..., :2]
+
+    total_flops = 0
+
+    # Embedding layer
+    for layer in model.layers:
+        if layer.name == 'dense' and 'dense' == layer.name:
+            x_prev = x
+            x = layer(x, training=False)
+
+            # Dense layer: FLOPs = 2 * M * N * K (M outputs, N inputs, K batch*points)
+            # For shape (B, N, in_feat) -> (B, N, out_feat):
+            # FLOPs = B * N * in_feat * out_feat * 2
+            batch_size = x_prev.shape[0]
+            n_points = x_prev.shape[1]
+            in_feat = x_prev.shape[2]
+            out_feat = x.shape[2]
+            flops = batch_size * n_points * in_feat * out_feat * 2
+            total_flops += flops
+            print(f"  Embedding Dense: {x_prev.shape} -> {x.shape}, FLOPs: {flops:,}")
+            break
+
+    # Trace through PTv3 blocks and pooling
+    for layer in model.layers:
+        if 'PTv3Block' in str(type(layer)):
+            x_prev_shape = x.shape
+            x, coords = layer([x, coords], training=False)
+
+            # Estimate PTv3Block FLOPs based on actual runtime shapes
+            batch_size = x.shape[0]
+            n_points = x.shape[1]
+            d_model = x.shape[2]
+
+            # Estimate based on attention mechanism
+            # For local attention with patches, FLOPs depend on patch structure
+            # Simplified: assume it scales with n_points and d_model
+            # Main operations: QKV proj, attention within patches, FFN
+            block_flops = batch_size * (
+                3 * n_points * d_model * d_model +  # QKV projections
+                n_points * d_model * d_model +       # Output projection
+                2 * n_points * d_model * (4 * d_model)  # FFN (assume 4x expansion)
+            )
+            total_flops += block_flops
+            print(f"  {layer.name}: {x_prev_shape} -> {x.shape}, FLOPs: {block_flops:,}")
+
+        elif 'GeometricPooling' in str(type(layer)):
+            x_prev_shape = x.shape
+            x_before_pool, coords_before_pool = x, coords
+            x, coords = layer([x, coords], training=False)
+
+            # Calculate theoretical FLOPs for GeometricPooling operations
+            batch_size = x_prev_shape[0]
+            n_in = x_prev_shape[1]
+            n_out = x.shape[1]
+            in_feat = x_prev_shape[2]
+            out_feat = x.shape[2]
+            stride = layer.stride
+
+            pool_flops = 0
+
+            # 1. Sorting: O(N log N) comparisons, approximate as N * log2(N) comparisons
+            #    Each comparison is counted as 1 FLOP
+            import math
+            sort_flops = batch_size * n_in * math.ceil(math.log2(max(n_in, 2))) if n_in > 1 else 0
+            pool_flops += sort_flops
+
+            # 2. Grouping and reshape: No FLOPs (memory operations only)
+
+            # 3. Max pooling over stride groups: (stride-1) comparisons per output point
+            #    Shape: (B, N_out, stride, C) -> (B, N_out, C)
+            max_pool_flops = batch_size * n_out * in_feat * (stride - 1)
+            pool_flops += max_pool_flops
+
+            # 4. Mean pooling for coordinates: (stride-1) additions + 1 division per output
+            #    Shape: (B, N_out, stride, 2) -> (B, N_out, 2)
+            mean_pool_flops = batch_size * n_out * 2 * stride  # stride adds + 1 div ≈ stride ops
+            pool_flops += mean_pool_flops
+
+            # 5. Dense projection: standard matrix multiply
+            #    (B, N_out, in_feat) @ (in_feat, out_feat) = (B, N_out, out_feat)
+            dense_flops = batch_size * n_out * in_feat * out_feat * 2
+            pool_flops += dense_flops
+
+            # 6. LayerNorm: mean, variance, normalize, scale, shift
+            #    - Mean: out_feat additions
+            #    - Variance: out_feat multiplications + out_feat additions
+            #    - Normalize: out_feat divisions
+            #    - Scale + shift: 2 * out_feat multiplications
+            #    Total per point: ~5 * out_feat operations
+            ln_flops = batch_size * n_out * out_feat * 5
+            pool_flops += ln_flops
+
+            total_flops += pool_flops
+
+            # Breakdown for clarity
+            print(f"  {layer.name}: {x_prev_shape} -> {x.shape} ({n_in}->{n_out} pts)")
+            print(f"    - Sort:         {sort_flops:,} FLOPs")
+            print(f"    - Max pool:     {max_pool_flops:,} FLOPs")
+            print(f"    - Mean pool:    {mean_pool_flops:,} FLOPs")
+            print(f"    - Dense proj:   {dense_flops:,} FLOPs")
+            print(f"    - LayerNorm:    {ln_flops:,} FLOPs")
+            print(f"    - Total:        {pool_flops:,} FLOPs")
+
+    # Final classification head
+    for layer in model.layers:
+        if layer.name.startswith('dense_') and hasattr(layer, 'units'):
+            # Count params and estimate FLOPs
+            params = layer.count_params()
+            if params > 0:
+                # Simplified: FLOPs ≈ 2 * params for dense layers
+                head_flops = 2 * params
+                total_flops += head_flops
+
+    return total_flops
+
+
 def get_flops(model, input_shape):
+    """
+    Estimate FLOPs by running model with concrete input and profiling.
+    For models with dynamic shapes, we trace with actual runtime shapes.
+    """
     from tensorflow.python.framework.convert_to_constants import (
             convert_variables_to_constants_v2_as_graph,
     )
+
+    # Create a concrete input to trace actual shapes
+    concrete_input = tf.random.normal(input_shape)
+
+    # Run once to determine actual dynamic shapes
+    _ = model(concrete_input, training=False)
 
     spec_x = tf.TensorSpec(input_shape, tf.float32)
 
@@ -41,7 +177,12 @@ def get_flops(model, input_shape):
             prof = tf.compat.v1.profiler.profile(
                     graph=g, run_meta=run_meta, cmd="op", options=opts
             )
-            return prof.total_float_ops
+            static_flops = prof.total_float_ops
+
+    # Also compute FLOPs manually based on actual layer shapes
+    manual_flops = estimate_flops_from_runtime(model, concrete_input)
+
+    return static_flops, manual_flops
 
 
 def compute_stage_lengths(num_particles, enc_strides):
@@ -120,7 +261,7 @@ def parse_args():
     p.add_argument("--dropout", type=float, default=0.0)
     p.add_argument("--aggregation", choices=["mean", "max"], default="max")
     p.add_argument("--output_dim", type=int, default=5)
-    p.add_argument("--model_size", choices=["small", "matched", "medium", "large"], default="small")
+    p.add_argument("--model_size", choices=["small", "small_2layer", "matched", "medium", "large"], default="small")
     p.add_argument('--use_serialized_model', action='store_true', help='Use the serialized version of the PointTransformer model')
     p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
 
@@ -134,7 +275,8 @@ def main():
     # presets for small / medium / large
     presets = {
 			"small":  dict(enc_dims=[16], enc_layers=[1], enc_heads=[4], enc_strides=[2], enc_patch_sizes=[25], cpe_k=8, use_rpe=False),
-    		"matched": dict(enc_dims=[12, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
+            "small_2layer": dict(enc_dims=[16, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
+    		"matched": dict(enc_dims=[12, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
             "medium": dict(enc_dims=[12, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     		"large":  dict(enc_dims=[16, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     	}
@@ -187,10 +329,15 @@ def main():
     params = model.count_params()
 
     # FLOPs on a dummy single-sample input
-    flops = get_flops(model, (1, 150, 3))
-    macs = flops // 2
+    print("\n" + "="*60)
+    print("FLOP Estimation (with runtime shape tracing):")
+    print("="*60)
+    static_flops, manual_flops = get_flops(model, (1, 150, 3))
+    macs_static = static_flops // 2
+    macs_manual = manual_flops // 2
 
     # output
+    print("\n" + "="*60)
     print("=== PointTransformerV3TF Inspection ===")
     print(f"num_particles = 150, feature_dim = 3")
     print(f"enc_dims      = {enc_dims}")
@@ -200,8 +347,11 @@ def main():
     print(f"enc_patch_sz  = {enc_patch_sizes}")
     print("---------------------------------------")
     print(f"Total params  = {params:,}")
-    print(f"FLOPs (1 x)   = {flops:,}")
-    print(f"MACs (approx) = {macs:,}")
+    print(f"\nFLOPs (static graph profiler) = {static_flops:,}")
+    print(f"MACs  (static graph profiler) = {macs_static:,}")
+    print(f"\nFLOPs (runtime traced)        = {manual_flops:,}")
+    print(f"MACs  (runtime traced)        = {macs_manual:,}")
+    print("="*60)
     print(model.summary())
 
     report_ptv3_blocks(model)

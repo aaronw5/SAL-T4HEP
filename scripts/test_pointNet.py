@@ -139,8 +139,17 @@ def main():
     )
     weights_path = args.weights or os.path.join(args.save_dir, "best.weights.h5")
     logging.info("Loading weights from %s", weights_path)
-    model.load_weights(weights_path)
-    logging.info("Weights loaded.")
+    try:
+        # Preferred path: file contains only weights (from save_weights / save_weights_only)
+        model.load_weights(weights_path)
+        logging.info("Weights loaded into freshly built model.")
+    except Exception as e:
+        logging.warning(
+            "load_weights('%s') failed (%s). Trying to load as a full model instead.",
+            weights_path, repr(e),
+        )
+        model = tf.keras.models.load_model(weights_path, compile=False)
+        logging.info("Loaded full model from %s", weights_path)
     model.summary(print_fn=lambda s: logging.info(s))
 
     # FLOPs, timing, memory
