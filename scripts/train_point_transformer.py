@@ -24,8 +24,8 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score, roc_curve, auc, roc_auc_score
 import matplotlib.pyplot as plt
 
-# import model builder
-from models.PointTransformerV3TF import build_ptv3_jet_classifier
+# import model builders
+from models.PointTransformerV3TF import build_ptv3_jet_classifier, build_jedi_ptv3_hybrid
 from models.PointTransformer_serialized import build_ptv3_serialized_jet_classifier
 
 
@@ -285,6 +285,8 @@ def parse_args():
 		p.add_argument("--model_size", choices=["small", "small_2layer_no_downsamp", "small_2layer_2_downsamp", "matched", "medium", "large"], default="small")
 		p.add_argument('--use_serialized_model', action='store_true', help='Use the serialized version of the PointTransformer model')
 		p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
+		p.add_argument('--use_jedi_hybrid', action='store_true', help='Use JEDI-PTv3 Hybrid (O(N) global interaction instead of attention)')
+		p.add_argument('--disable_cpe', action='store_true', help='Disable CPE in JEDI hybrid (for pure JEDI-style permutation invariance)')
 		return p.parse_args()
 
 
@@ -385,7 +387,22 @@ def main():
 		use_rpe = args.use_rpe or cfg["use_rpe"]
 
 		# build and compile model
-		if args.use_serialized_model:
+		if args.use_jedi_hybrid:
+			logging.info("Building JEDI-PTv3 Hybrid model (O(N) global interaction)")
+			model = build_jedi_ptv3_hybrid(
+				num_particles=num_particles,
+				output_dim=output_dim,
+				enc_dims=enc_dims,
+				enc_layers=enc_layers,
+				enc_strides=enc_strides,
+				cpe_k=cpe_k,
+				grid_size=args.grid_size,
+				use_pool=(not args.disable_pool),
+				use_cpe=(not args.disable_cpe),
+				dropout=args.dropout,
+				aggregation=args.aggregation,
+			)
+		elif args.use_serialized_model:
 			model = build_ptv3_serialized_jet_classifier(
 				num_particles=num_particles,
 				output_dim=output_dim,
