@@ -119,6 +119,7 @@ def main():
 	parser.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 	parser.add_argument("--use_rpe", action="store_true", help="Enable RPE regardless of preset")
 	parser.add_argument("--grid_size", type=float, default=0.2, help="GeometricCPE grid size (coarser -> smaller grid)")
+	parser.add_argument("--aggregation", choices=["mean", "max"], default="max", help="Aggregation method for final pooling")
 	parser.add_argument("--weights", help="Path to weights .h5 file (defaults to save_dir/best.weights.h5)")
 	parser.add_argument(
 		"--use_serialized_model",
@@ -179,7 +180,7 @@ def main():
 			grid_size=args.grid_size,
 			use_rpe=use_rpe,
 			dropout=0.0,
-			aggregation="max",
+			aggregation=args.aggregation,
 			serialize_by=args.serialize_by,
 			use_pool=(not args.disable_pool),
 		)
@@ -197,7 +198,7 @@ def main():
 			use_rpe=use_rpe,
 			use_pool=(not args.disable_pool),
 			dropout=0.0,
-			aggregation="max",
+			aggregation=args.aggregation,
 		)
 	model.summary(print_fn=lambda s: logging.info(s))
 	logging.info("Preset: %s", args.model_size)
