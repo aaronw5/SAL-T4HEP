@@ -355,6 +355,7 @@ def build_linformer_transformer_classifier(
     shuffle_all=0,
     shuffle_234=0,
     shuffle_34=0,
+    aggregation="max",
 ):
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation="relu")(inputs)
@@ -374,7 +375,7 @@ def build_linformer_transformer_classifier(
         shuffle_234,
         shuffle_34,
     )(x)
-    x = AggregationLayer("max")(x)
+    x = AggregationLayer(aggregation)(x)
     x = layers.Dense(d_model, activation="relu")(x)
     activation = ""
     if output_dim == 1:

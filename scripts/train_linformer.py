@@ -272,6 +272,12 @@ def parse_args():
         default=0,
         help="Shuffle only the 3,4 partitions (keep partitions 1,2 fixed)",
     )
+    p.add_argument(
+        "--aggregation",
+        choices=["mean", "max"],
+        default="max",
+        help="Aggregation method for Linformer",
+    )
     return p.parse_args()
 
 
@@ -378,6 +384,7 @@ def main():
             conv_filter_heights=conv_filter_heights,
             vertical_stride=1,
             num_layers=args.num_layers,
+            aggregation=args.aggregation
         )
     else:
         model = build_linformer_transformer_classifier(
@@ -397,6 +404,7 @@ def main():
             shuffle_all=args.shuffle_all,
             shuffle_234=args.shuffle_234,
             shuffle_34=args.shuffle_34,
+            aggregation=args.aggregation,
         )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),

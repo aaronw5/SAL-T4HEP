@@ -306,6 +306,7 @@ def build_linformer_transformer_classifier_big(
     conv_filter_heights=[1, 3, 5],
     vertical_stride=1,
     num_layers=2,
+    aggregation="max",
 ):
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation="relu")(inputs)
@@ -323,7 +324,7 @@ def build_linformer_transformer_classifier_big(
             conv_filter_heights,
             vertical_stride,
         )(x)
-    x = AggregationLayer("max")(x)
+    x = AggregationLayer(aggregation)(x)
     for _ in range(num_layers - 1):
         x = layers.Dense(d_model, activation="relu")(x)
 

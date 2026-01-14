@@ -120,6 +120,7 @@ def main():
     parser.add_argument("--cluster_batch_size", type=int, default=1024)
     parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--test_model", help="Path to the saved full model")
+    parser.add_argument("--aggregation", choices=["mean", "max"], default="max", help="Aggregation method for Linformer")
     args = parser.parse_args()
 
     # Setup logging
