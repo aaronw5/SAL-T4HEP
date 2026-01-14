@@ -17,9 +17,10 @@ class AggregationLayer(layers.Layer):
 
     def call(self, inputs):
         if self.aggreg == "mean":
-            return tf.reduce_mean(inputs, axis=1)
+            # Optimized fused operation with explicit parameters
+            return tf.math.reduce_mean(inputs, axis=1, keepdims=False)
         elif self.aggreg == "max":
-            return tf.reduce_max(inputs, axis=1)
+            return tf.math.reduce_max(inputs, axis=1, keepdims=False)
         else:
             raise ValueError(
                 "Given aggregation string is not implemented. Use 'mean' or 'max'."
@@ -308,9 +309,11 @@ class LinformerTransformerBlock(layers.Layer):
         shuffle_all=0,
         shuffle_234=0,
         shuffle_34=0,
+        use_layer_norm=False,
         **kwargs
     ):
         super().__init__(**kwargs)
+        self.use_layer_norm = use_layer_norm
         self.attn = ClusteredLinformerAttention(
             d_model,
             num_heads,
@@ -325,17 +328,26 @@ class LinformerTransformerBlock(layers.Layer):
             shuffle_234,
             shuffle_34,
         )
-        self.act1 = DynamicTanh()
-        self.act2 = DynamicTanh()
+        if use_layer_norm:
+            self.norm1 = layers.LayerNormalization(epsilon=1e-6)
+            self.norm2 = layers.LayerNormalization(epsilon=1e-6)
+        else:
+            self.act1 = DynamicTanh()
+            self.act2 = DynamicTanh()
         self.ffn = tf.keras.Sequential(
             [layers.Dense(d_ff, activation="relu"), layers.Dense(d_model)]
         )
 
     def call(self, x):
         attn_out = self.attn(x)
-        out1 = self.act1(x + attn_out)
-        ffn_out = self.ffn(out1)
-        return self.act2(out1 + ffn_out)
+        if self.use_layer_norm:
+            out1 = self.norm1(x + attn_out)
+            ffn_out = self.ffn(out1)
+            return self.norm2(out1 + ffn_out)
+        else:
+            out1 = self.act1(x + attn_out)
+            ffn_out = self.ffn(out1)
+            return self.act2(out1 + ffn_out)
 
 
 def build_linformer_transformer_classifier(
@@ -356,6 +368,7 @@ def build_linformer_transformer_classifier(
     shuffle_234=0,
     shuffle_34=0,
     aggregation="max",
+    use_layer_norm=False,
 ):
     inputs = layers.Input((num_particles, feature_dim))
     x = layers.Dense(d_model, activation="relu")(inputs)
@@ -374,6 +387,7 @@ def build_linformer_transformer_classifier(
         shuffle_all,
         shuffle_234,
         shuffle_34,
+        use_layer_norm,
     )(x)
     x = AggregationLayer(aggregation)(x)
     x = layers.Dense(d_model, activation="relu")(x)

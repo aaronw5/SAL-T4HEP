@@ -121,6 +121,7 @@ def main():
     parser.add_argument("--batch_size", type=int, default=4096)
     parser.add_argument("--test_model", help="Path to the saved full model")
     parser.add_argument("--aggregation", choices=["mean", "max"], default="max", help="Aggregation method for Linformer")
+    parser.add_argument("--use_layer_norm", action="store_true", help="Use LayerNormalization instead of DynamicTanh")
     args = parser.parse_args()
 
     # Setup logging

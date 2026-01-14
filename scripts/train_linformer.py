@@ -278,6 +278,11 @@ def parse_args():
         default="max",
         help="Aggregation method for Linformer",
     )
+    p.add_argument(
+        "--use_layer_norm",
+        action="store_true",
+        help="Use LayerNormalization instead of DynamicTanh for faster inference",
+    )
     return p.parse_args()
 
 
@@ -384,7 +389,8 @@ def main():
             conv_filter_heights=conv_filter_heights,
             vertical_stride=1,
             num_layers=args.num_layers,
-            aggregation=args.aggregation
+            aggregation=args.aggregation,
+            use_layer_norm=args.use_layer_norm,
         )
     else:
         model = build_linformer_transformer_classifier(
@@ -405,6 +411,7 @@ def main():
             shuffle_234=args.shuffle_234,
             shuffle_34=args.shuffle_34,
             aggregation=args.aggregation,
+            use_layer_norm=args.use_layer_norm,
         )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
