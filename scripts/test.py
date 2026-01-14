@@ -122,6 +122,7 @@ def main():
     parser.add_argument("--test_model", help="Path to the saved full model")
     parser.add_argument("--aggregation", choices=["mean", "max"], default="max", help="Aggregation method for Linformer")
     parser.add_argument("--use_layer_norm", action="store_true", help="Use LayerNormalization instead of DynamicTanh")
+    parser.add_argument("--ffn_activation", choices=["relu", "gelu", "swish", "silu", "tanh"], default="relu", help="Activation function for feed-forward network")
     args = parser.parse_args()
 
     # Setup logging

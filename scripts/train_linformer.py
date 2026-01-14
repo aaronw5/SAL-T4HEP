@@ -283,6 +283,17 @@ def parse_args():
         action="store_true",
         help="Use LayerNormalization instead of DynamicTanh for faster inference",
     )
+    p.add_argument(
+        "--ffn_activation",
+        choices=["relu", "gelu", "swish", "silu", "tanh"],
+        default="relu",
+        help="Activation function for feed-forward network (relu is fastest, gelu is slower but may improve accuracy)",
+    )
+    p.add_argument(
+        "--jit_compile",
+        action="store_true",
+        help="Enable XLA JIT compilation for faster training (5-15%% speedup on modern GPUs)",
+    )
     return p.parse_args()
 
 
@@ -391,6 +402,7 @@ def main():
             num_layers=args.num_layers,
             aggregation=args.aggregation,
             use_layer_norm=args.use_layer_norm,
+            ffn_activation=args.ffn_activation,
         )
     else:
         model = build_linformer_transformer_classifier(
@@ -412,11 +424,13 @@ def main():
             shuffle_34=args.shuffle_34,
             aggregation=args.aggregation,
             use_layer_norm=args.use_layer_norm,
+            ffn_activation=args.ffn_activation,
         )
     model.compile(
         optimizer=tf.keras.optimizers.Adam(),
         loss=loss_fn,
         metrics=["accuracy"],
+        jit_compile=args.jit_compile,
     )
     model.summary(print_fn=lambda l: logging.info(l))
     logging.info("Total params: %d", model.count_params())

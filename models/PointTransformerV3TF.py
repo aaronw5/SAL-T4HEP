@@ -317,7 +317,7 @@ class ChannelMixingLayer(layers.Layer):
 
 class PTv3Block(layers.Layer):
     """Transformer block with CPE."""
-    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, **kwargs):
+    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, ffn_activation="gelu", **kwargs):
         super().__init__(**kwargs)
         self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
@@ -325,7 +325,7 @@ class PTv3Block(layers.Layer):
         self.drop1 = layers.Dropout(dropout)
         self.norm2 = layers.LayerNormalization(epsilon=1e-6)
         self.ffn = tf.keras.Sequential([
-            layers.Dense(d_ff, activation="gelu"),
+            layers.Dense(d_ff, activation=ffn_activation),
             layers.Dropout(dropout),
             layers.Dense(d_model),
         ])
@@ -471,18 +471,19 @@ def build_ptv3_jet_classifier(
     use_pool=True,
     dropout=0.0,
     aggregation="max",
+    ffn_activation="gelu",
 ):
     """Build hierarchical PTv3-inspired jet classifier."""
-    
+
     # Input: [pt, eta, phi]
     features_input = layers.Input((num_particles, 3), name="features")
-    
+
     # Extract coordinates
     coords = features_input[..., 1:3]  # [eta, phi]
-    
+
     # Initial projection
-    x = layers.Dense(enc_dims[0], activation="relu")(features_input)
-    
+    x = layers.Dense(enc_dims[0], activation=ffn_activation)(features_input)
+
     # Hierarchical encoder
     for i in range(len(enc_dims)):
         # Transformer blocks
@@ -496,8 +497,9 @@ def build_ptv3_jet_classifier(
                 grid_size=grid_size,
                 dropout=dropout,
                 use_rpe=use_rpe,
+                ffn_activation=ffn_activation,
             )([x, coords])
-        
+
             # Downsample (except last stage)
             if i < len(enc_dims) - 1:
                 if use_pool:
@@ -508,15 +510,15 @@ def build_ptv3_jet_classifier(
                 else:
                     # no pooling, just a dense layer
                     x = layers.Dense(enc_dims[i + 1])(x)
-    
-    # Aggregation
+
+    # Optimized aggregation with explicit parameters
     if aggregation == "mean":
-        x = tf.reduce_mean(x, axis=1)
+        x = tf.math.reduce_mean(x, axis=1, keepdims=False)
     else:
-        x = tf.reduce_max(x, axis=1)
-    
+        x = tf.math.reduce_max(x, axis=1, keepdims=False)
+
     # Classifier head
-    x = layers.Dense(enc_dims[-1], activation="relu")(x)
+    x = layers.Dense(enc_dims[-1], activation=ffn_activation)(x)
     x = layers.Dropout(dropout)(x)
     
     activation = "sigmoid" if output_dim == 1 else "softmax"
@@ -537,6 +539,7 @@ def build_jedi_ptv3_hybrid(
     use_cpe=True,
     dropout=0.0,
     aggregation="max",
+    ffn_activation="relu",
 ):
     """
     Build JEDI-PTv3 Hybrid jet classifier.
@@ -574,7 +577,7 @@ def build_jedi_ptv3_hybrid(
     coords = features_input[..., 1:3]  # [eta, phi]
 
     # Initial projection
-    x = layers.Dense(enc_dims[0], activation="relu")(features_input)
+    x = layers.Dense(enc_dims[0], activation=ffn_activation)(features_input)
 
     # Hierarchical encoder with JEDI-style blocks
     for i in range(len(enc_dims)):
@@ -600,14 +603,14 @@ def build_jedi_ptv3_hybrid(
                 # no pooling, just a dense layer
                 x = layers.Dense(enc_dims[i + 1])(x)
 
-    # Aggregation
+    # Optimized aggregation with explicit parameters
     if aggregation == "mean":
-        x = tf.reduce_mean(x, axis=1)
+        x = tf.math.reduce_mean(x, axis=1, keepdims=False)
     else:
-        x = tf.reduce_max(x, axis=1)
+        x = tf.math.reduce_max(x, axis=1, keepdims=False)
 
     # Classifier head
-    x = layers.Dense(enc_dims[-1], activation="relu")(x)
+    x = layers.Dense(enc_dims[-1], activation=ffn_activation)(x)
     x = layers.Dropout(dropout)(x)
 
     activation = "sigmoid" if output_dim == 1 else "softmax"

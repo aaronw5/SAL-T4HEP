@@ -287,6 +287,8 @@ def parse_args():
 		p.add_argument('--serialize_by', choices=['morton','pt','kt'], default='morton', help='Serialization strategy when using the serialized model')
 		p.add_argument('--use_jedi_hybrid', action='store_true', help='Use JEDI-PTv3 Hybrid (O(N) global interaction instead of attention)')
 		p.add_argument('--disable_cpe', action='store_true', help='Disable CPE in JEDI hybrid (for pure JEDI-style permutation invariance)')
+		p.add_argument("--ffn_activation", choices=["relu", "gelu", "swish", "silu", "tanh"], default="gelu", help="Activation function for feed-forward network (relu is fastest, gelu is default)")
+		p.add_argument("--jit_compile", action="store_true", help="Enable XLA JIT compilation for faster training (5-15%% speedup on modern GPUs)")
 		return p.parse_args()
 
 
@@ -401,6 +403,7 @@ def main():
 				use_cpe=(not args.disable_cpe),
 				dropout=args.dropout,
 				aggregation=args.aggregation,
+				ffn_activation=args.ffn_activation,
 			)
 		elif args.use_serialized_model:
 			model = build_ptv3_serialized_jet_classifier(
@@ -434,11 +437,13 @@ def main():
 				use_pool=(not args.disable_pool),
 				dropout=args.dropout,
 				aggregation=args.aggregation,
+				ffn_activation=args.ffn_activation,
 			)
 		model.compile(
 				optimizer=tf.keras.optimizers.Adam(),
 				loss=loss_fn,
-				metrics=["accuracy"]
+				metrics=["accuracy"],
+				jit_compile=args.jit_compile,
 		)
 		model.summary(print_fn=lambda l: logging.info(l))
 		logging.info("Total params: %d", model.count_params())

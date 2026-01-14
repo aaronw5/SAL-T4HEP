@@ -266,6 +266,7 @@ class LinformerTransformerBlock(layers.Layer):
         conv_filter_heights=[1, 3, 5],
         vertical_stride=1,
         use_layer_norm=False,
+        ffn_activation="relu",
         **kwargs
     ):
         super().__init__(**kwargs)
@@ -288,7 +289,7 @@ class LinformerTransformerBlock(layers.Layer):
             self.act1 = DynamicTanh()
             self.act2 = DynamicTanh()
         self.ffn = tf.keras.Sequential(
-            [layers.Dense(d_ff, activation="relu"), layers.Dense(d_model)]
+            [layers.Dense(d_ff, activation=ffn_activation), layers.Dense(d_model)]
         )
 
     def call(self, x):
@@ -320,9 +321,10 @@ def build_linformer_transformer_classifier_big(
     num_layers=2,
     aggregation="max",
     use_layer_norm=False,
+    ffn_activation="relu",
 ):
     inputs = layers.Input((num_particles, feature_dim))
-    x = layers.Dense(d_model, activation="relu")(inputs)
+    x = layers.Dense(d_model, activation=ffn_activation)(inputs)
     for _ in range(num_layers):
         x = LinformerTransformerBlock(
             d_model,
@@ -337,10 +339,11 @@ def build_linformer_transformer_classifier_big(
             conv_filter_heights,
             vertical_stride,
             use_layer_norm,
+            ffn_activation,
         )(x)
     x = AggregationLayer(aggregation)(x)
     for _ in range(num_layers - 1):
-        x = layers.Dense(d_model, activation="relu")(x)
+        x = layers.Dense(d_model, activation=ffn_activation)(x)
 
     activation = ""
     if output_dim == 1:
