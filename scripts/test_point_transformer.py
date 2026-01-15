@@ -101,7 +101,9 @@ def load_test_data(dataset, data_dir, num_particles):
 def select_preset(model_size):
 	presets = {
 			"small":  dict(enc_dims=[16], enc_layers=[1], enc_heads=[4], enc_strides=[2], enc_patch_sizes=[25], cpe_k=8, use_rpe=False),
-    		"matched": dict(enc_dims=[12, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
+			"small_2layer_no_downsamp": dict(enc_dims=[16, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[1, 1], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
+			"small_2layer_2_downsamp": dict(enc_dims=[16, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
+    		"matched": dict(enc_dims=[12, 16], enc_layers=[1, 1], enc_heads=[4, 4], enc_strides=[2], enc_patch_sizes=[25, 25], cpe_k=8, use_rpe=False),
     		"medium": dict(enc_dims=[12, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     		"large":  dict(enc_dims=[16, 24, 32], enc_layers=[1, 1, 1], enc_heads=[4, 4, 4], enc_strides=[2, 2], enc_patch_sizes=[25, 25, 25], cpe_k=8, use_rpe=False),
     	}
@@ -115,7 +117,7 @@ def main():
 	parser.add_argument("--save_dir", required=True)
 	parser.add_argument("--sort_by", choices=["pt","eta","phi","delta_R","kt"], default="pt")
 	parser.add_argument("--batch_size", type=int, default=4096)
-	parser.add_argument("--model_size", choices=["small", "matched", "medium", "large"], default="small")
+	parser.add_argument("--model_size", choices=["small", "small_2layer_no_downsamp", "small_2layer_2_downsamp", "matched", "medium", "large"], default="small")
 	parser.add_argument("--disable_pool", action="store_true", help="Disable GeometricPooling between stages")
 	parser.add_argument("--use_rpe", action="store_true", help="Enable RPE regardless of preset")
 	parser.add_argument("--grid_size", type=float, default=0.2, help="GeometricCPE grid size (coarser -> smaller grid)")
@@ -132,8 +134,11 @@ def main():
 		default="morton",
 		help="Serialization strategy for the serialized PTv3 model",
 	)
+	parser.add_argument("--ffn_activation", choices=["relu", "gelu", "swish", "silu", "tanh"], default="gelu", help="Activation function for feed-forward network (relu is fastest, gelu is default)")
 	parser.add_argument("--use_jedi_hybrid", action="store_true", help="Use JEDI-PTv3 Hybrid (O(N) global interaction)")
 	parser.add_argument("--disable_cpe", action="store_true", help="Disable CPE in JEDI hybrid")
+	parser.add_argument("--cpe_type", choices=["original", "sinusoidal", "pairwise", "depthwise", "quantized"], default="original",
+		help="Type of CPE to use: original (scatter/gather), sinusoidal (fastest), pairwise (k-NN), depthwise (1D conv), quantized (fixed grid)")
 	args = parser.parse_args()
 
 	# Logging
@@ -171,6 +176,7 @@ def main():
 	# Build model: JEDI hybrid, serialized, or standard PTv3
 	if args.use_jedi_hybrid:
 		logging.info("Building JEDI-PTv3 Hybrid model (O(N) global interaction)")
+		logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 		model = build_jedi_ptv3_hybrid(
 			num_particles=num_particles,
 			output_dim=output_dim,
@@ -181,6 +187,7 @@ def main():
 			grid_size=args.grid_size,
 			use_pool=(not args.disable_pool),
 			use_cpe=(not args.disable_cpe),
+			cpe_type=args.cpe_type,
 			dropout=0.0,
 			aggregation=args.aggregation,
 		)
@@ -202,21 +209,23 @@ def main():
 			use_pool=(not args.disable_pool),
 		)
 	else:
+		logging.info("Building JEDI-PTv3 Hybrid model (default fallback)")
+		logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 		model = build_ptv3_jet_classifier(
-			num_particles=num_particles,
-			output_dim=output_dim,
-			enc_dims=enc_dims,
-			enc_layers=enc_layers,
-			enc_heads=enc_heads,
-			enc_patch_sizes=enc_patch_sizes,
-			enc_strides=enc_strides,
-			cpe_k=cpe_k,
-			grid_size=args.grid_size,
-			use_rpe=use_rpe,
-			use_pool=(not args.disable_pool),
-			dropout=0.0,
-			aggregation=args.aggregation,
-		)
+				num_particles=num_particles,
+				output_dim=output_dim,
+				enc_dims=enc_dims,
+				enc_layers=enc_layers,
+				enc_strides=enc_strides,
+				cpe_k=cpe_k,
+				grid_size=args.grid_size,
+				use_pool=(not args.disable_pool),
+				use_cpe=(not args.disable_cpe),
+				cpe_type=args.cpe_type,
+				dropout=0.0,
+				aggregation=args.aggregation,
+				ffn_activation=args.ffn_activation,
+			)
 	model.summary(print_fn=lambda s: logging.info(s))
 	logging.info("Preset: %s", args.model_size)
 	logging.info("Hyperparams: dims=%s layers=%s heads=%s strides=%s patch=%s", enc_dims, enc_layers, enc_heads, enc_strides, enc_patch_sizes)

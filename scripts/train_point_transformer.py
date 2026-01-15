@@ -288,6 +288,8 @@ def parse_args():
 		p.add_argument('--use_jedi_hybrid', action='store_true', help='Use JEDI-PTv3 Hybrid (O(N) global interaction instead of attention)')
 		p.add_argument('--disable_cpe', action='store_true', help='Disable CPE in JEDI hybrid (for pure JEDI-style permutation invariance)')
 		p.add_argument("--ffn_activation", choices=["relu", "gelu", "swish", "silu", "tanh"], default="gelu", help="Activation function for feed-forward network (relu is fastest, gelu is default)")
+		p.add_argument("--cpe_type", choices=["original", "sinusoidal", "pairwise", "depthwise", "quantized"], default="original",
+			help="Type of CPE to use: original (scatter/gather), sinusoidal (fastest), pairwise (k-NN), depthwise (1D conv), quantized (fixed grid)")
 		p.add_argument("--jit_compile", action="store_true", help="Enable XLA JIT compilation for faster training (5-15%% speedup on modern GPUs)")
 		return p.parse_args()
 
@@ -389,6 +391,7 @@ def main():
 		use_rpe = args.use_rpe or cfg["use_rpe"]
 
 		# build and compile model
+			logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 		if args.use_jedi_hybrid:
 			logging.info("Building JEDI-PTv3 Hybrid model (O(N) global interaction)")
 			model = build_jedi_ptv3_hybrid(
@@ -401,6 +404,7 @@ def main():
 				grid_size=args.grid_size,
 				use_pool=(not args.disable_pool),
 				use_cpe=(not args.disable_cpe),
+				cpe_type=args.cpe_type,
 				dropout=args.dropout,
 				aggregation=args.aggregation,
 				ffn_activation=args.ffn_activation,
@@ -421,6 +425,8 @@ def main():
 				dropout=args.dropout,
 				aggregation=args.aggregation,
 				serialize_by=args.serialize_by,
+			logging.info("Building standard PTv3 model with attention")
+			logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 			)
 		else:
 			model = build_ptv3_jet_classifier(
@@ -434,6 +440,8 @@ def main():
 				cpe_k=cpe_k,
 				grid_size=args.grid_size,
 				use_rpe=use_rpe,
+				use_cpe=(not args.disable_cpe),
+				cpe_type=args.cpe_type,
 				use_pool=(not args.disable_pool),
 				dropout=args.dropout,
 				aggregation=args.aggregation,
