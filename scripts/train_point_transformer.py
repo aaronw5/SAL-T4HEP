@@ -391,7 +391,7 @@ def main():
 		use_rpe = args.use_rpe or cfg["use_rpe"]
 
 		# build and compile model
-			logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
+		logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 		if args.use_jedi_hybrid:
 			logging.info("Building JEDI-PTv3 Hybrid model (O(N) global interaction)")
 			model = build_jedi_ptv3_hybrid(
