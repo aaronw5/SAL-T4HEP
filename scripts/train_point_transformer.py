@@ -425,8 +425,6 @@ def main():
 				dropout=args.dropout,
 				aggregation=args.aggregation,
 				serialize_by=args.serialize_by,
-			logging.info("Building standard PTv3 model with attention")
-			logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 			)
 		else:
 			model = build_ptv3_jet_classifier(
