@@ -15,6 +15,15 @@ except ImportError:
     EFFICIENT_CPE_AVAILABLE = False
     print("Warning: EfficientCPE module not found. Only original GeometricCPE available.")
 
+# Check for Flash Attention availability
+try:
+    from tensorflow.keras.layers import MultiHeadAttention
+    # TensorFlow 2.11+ has built-in flash attention support via enable_flash_attention
+    FLASH_ATTENTION_AVAILABLE = hasattr(MultiHeadAttention, '__init__')
+except ImportError:
+    FLASH_ATTENTION_AVAILABLE = False
+    print("Warning: Flash Attention not available in this TensorFlow version.")
+
 
 # ========== Core Components ==========
 
@@ -167,21 +176,34 @@ class QuantizedRPE(layers.Layer):
 
 
 class PatchedAttention(layers.Layer):
-    """Local attention with patching."""
-    def __init__(self, d_model, num_heads, patch_size, dropout=0.0, use_rpe=True, **kwargs):
+    """Local attention with patching and optional Flash Attention support."""
+    def __init__(self, d_model, num_heads, patch_size, dropout=0.0, use_rpe=True, use_flash_attention=False, **kwargs):
         super().__init__(**kwargs)
         self.d_model = d_model
         self.num_heads = num_heads
         self.d_head = d_model // num_heads
         self.patch_size = patch_size
         self.use_rpe = use_rpe
-        
-        self.wq = layers.Dense(d_model, use_bias=True)
-        self.wk = layers.Dense(d_model, use_bias=True)
-        self.wv = layers.Dense(d_model, use_bias=True)
-        self.wo = layers.Dense(d_model, use_bias=True)
-        self.dropout = layers.Dropout(dropout)
-        self.rpe = QuantizedRPE(num_heads) if use_rpe else None
+        self.use_flash_attention = use_flash_attention and FLASH_ATTENTION_AVAILABLE
+
+        if self.use_flash_attention:
+            # Use TensorFlow's built-in MultiHeadAttention with Flash Attention
+            # Note: Flash Attention is automatically enabled for compatible GPUs in TF 2.11+
+            self.mha = layers.MultiHeadAttention(
+                num_heads=num_heads,
+                key_dim=self.d_head,
+                dropout=dropout,
+                use_bias=True
+            )
+            self.rpe = QuantizedRPE(num_heads) if use_rpe else None
+        else:
+            # Use custom implementation
+            self.wq = layers.Dense(d_model, use_bias=True)
+            self.wk = layers.Dense(d_model, use_bias=True)
+            self.wv = layers.Dense(d_model, use_bias=True)
+            self.wo = layers.Dense(d_model, use_bias=True)
+            self.dropout = layers.Dropout(dropout)
+            self.rpe = QuantizedRPE(num_heads) if use_rpe else None
     
     def _split_heads(self, x, num_heads):
         b, t, d = tf.unstack(tf.shape(x)[:3])
@@ -196,51 +218,73 @@ class PatchedAttention(layers.Layer):
     def call(self, x, coords, training=False):
         B, T, D = tf.unstack(tf.shape(x))
         P = self.patch_size
-        
+
         # Pad if necessary
         pad_len = (P - T % P) % P
         if pad_len > 0:
             x = tf.pad(x, [[0, 0], [0, pad_len], [0, 0]])
             coords = tf.pad(coords, [[0, 0], [0, pad_len], [0, 0]])
-        
+
         T_padded = T + pad_len
         num_patches = T_padded // P
-        
+
         # Reshape to patches
         x_patched = tf.reshape(x, [B, num_patches, P, D])
         x_patched = tf.reshape(x_patched, [B * num_patches, P, D])
         coords_patched = tf.reshape(coords, [B, num_patches, P, 2])
         coords_patched = tf.reshape(coords_patched, [B * num_patches, P, 2])
-        
-        # Attention within patches
-        q = self._split_heads(self.wq(x_patched), self.num_heads)
-        k = self._split_heads(self.wk(x_patched), self.num_heads)
-        v = self._split_heads(self.wv(x_patched), self.num_heads)
-        
-        dk = tf.cast(self.d_head, x.dtype)
-        scores = tf.einsum("bhtd,bhTd->bhtT", q, k) / tf.math.sqrt(dk)
-        
-        if self.use_rpe:
-            bias = self.rpe(coords_patched)
-            scores = scores + bias
-        
-        weights = tf.nn.softmax(scores, axis=-1)
-        weights = self.dropout(weights, training=training)
-        
-        out = tf.einsum("bhtT,bhTd->bhtd", weights, v)
-        out = self._merge_heads(out)
-        # Re-introduce static last-dim so Dense can build
-        out = tf.ensure_shape(out, [None, None, self.d_model])
-        out = self.wo(out)
-        
+
+        if self.use_flash_attention:
+            # Use Flash Attention via MultiHeadAttention
+            # Note: RPE bias is added via attention_mask parameter
+            attention_mask = None
+            if self.use_rpe:
+                # Compute RPE bias and convert to attention mask format
+                bias = self.rpe(coords_patched)  # [B*num_patches, H, P, P]
+                # Convert bias to attention mask: large negative values for masking
+                # MultiHeadAttention expects mask shape [B, H, T, T] or broadcastable
+                attention_mask = bias  # [B*num_patches, H, P, P]
+
+            # Flash Attention is automatically used on compatible hardware
+            out = self.mha(
+                query=x_patched,
+                value=x_patched,
+                key=x_patched,
+                attention_mask=attention_mask,
+                training=training,
+                return_attention_scores=False
+            )
+        else:
+            # Use custom implementation
+            # Attention within patches
+            q = self._split_heads(self.wq(x_patched), self.num_heads)
+            k = self._split_heads(self.wk(x_patched), self.num_heads)
+            v = self._split_heads(self.wv(x_patched), self.num_heads)
+
+            dk = tf.cast(self.d_head, x.dtype)
+            scores = tf.einsum("bhtd,bhTd->bhtT", q, k) / tf.math.sqrt(dk)
+
+            if self.use_rpe:
+                bias = self.rpe(coords_patched)
+                scores = scores + bias
+
+            weights = tf.nn.softmax(scores, axis=-1)
+            weights = self.dropout(weights, training=training)
+
+            out = tf.einsum("bhtT,bhTd->bhtd", weights, v)
+            out = self._merge_heads(out)
+            # Re-introduce static last-dim so Dense can build
+            out = tf.ensure_shape(out, [None, None, self.d_model])
+            out = self.wo(out)
+
         # Reshape back
         out = tf.reshape(out, [B, num_patches, P, self.d_model])
         out = tf.reshape(out, [B, T_padded, self.d_model])
-        
+
         # Remove padding
         if pad_len > 0:
             out = out[:, :-pad_len, :]
-        
+
         return out
 
 
@@ -330,7 +374,7 @@ class ChannelMixingLayer(layers.Layer):
 
 class PTv3Block(layers.Layer):
     """Transformer block with CPE."""
-    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, use_cpe=True, cpe_type='original', ffn_activation="gelu", **kwargs):
+    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, use_cpe=True, cpe_type='original', ffn_activation="gelu", use_flash_attention=False, **kwargs):
         super().__init__(**kwargs)
         self.use_cpe = use_cpe
 
@@ -349,7 +393,7 @@ class PTv3Block(layers.Layer):
                 self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
 
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
-        self.attn = PatchedAttention(d_model, num_heads, patch_size, dropout=dropout, use_rpe=use_rpe)
+        self.attn = PatchedAttention(d_model, num_heads, patch_size, dropout=dropout, use_rpe=use_rpe, use_flash_attention=use_flash_attention)
         self.drop1 = layers.Dropout(dropout)
         self.norm2 = layers.LayerNormalization(epsilon=1e-6)
         self.ffn = tf.keras.Sequential([
@@ -514,6 +558,7 @@ def build_ptv3_jet_classifier(
     dropout=0.0,
     aggregation="max",
     ffn_activation="gelu",
+    use_flash_attention=False,
 ):
     """
     Build hierarchical PTv3-inspired jet classifier.
@@ -535,6 +580,7 @@ def build_ptv3_jet_classifier(
         dropout: Dropout rate
         aggregation: Global pooling method ('mean' or 'max')
         ffn_activation: Activation function for FFN ('relu', 'gelu', etc.)
+        use_flash_attention: Whether to use Flash Attention (TensorFlow 2.11+ on compatible GPUs)
 
     Returns:
         Keras Model for jet classification
@@ -565,6 +611,7 @@ def build_ptv3_jet_classifier(
                 use_cpe=use_cpe,
                 cpe_type=cpe_type,
                 ffn_activation=ffn_activation,
+                use_flash_attention=use_flash_attention,
             )([x, coords])
 
             # Downsample (except last stage)

@@ -209,7 +209,7 @@ def main():
 			use_pool=(not args.disable_pool),
 		)
 	else:
-		logging.info("Building JEDI-PTv3 Hybrid model (default fallback)")
+		logging.info("Building PTv3 model (default fallback)")
 		logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 		model = build_ptv3_jet_classifier(
 				num_particles=num_particles,

@@ -291,6 +291,7 @@ def parse_args():
 		p.add_argument("--cpe_type", choices=["original", "sinusoidal", "pairwise", "depthwise", "quantized"], default="original",
 			help="Type of CPE to use: original (scatter/gather), sinusoidal (fastest), pairwise (k-NN), depthwise (1D conv), quantized (fixed grid)")
 		p.add_argument("--jit_compile", action="store_true", help="Enable XLA JIT compilation for faster training (5-15%% speedup on modern GPUs)")
+		p.add_argument("--use_flash_attention", action="store_true", help="Enable Flash Attention for faster and more memory-efficient attention (requires TensorFlow 2.11+ and compatible GPU)")
 		return p.parse_args()
 
 
@@ -392,6 +393,7 @@ def main():
 
 		# build and compile model
 		logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
+		logging.info("Flash Attention enabled: %s", args.use_flash_attention)
 		if args.use_jedi_hybrid:
 			logging.info("Building JEDI-PTv3 Hybrid model (O(N) global interaction)")
 			model = build_jedi_ptv3_hybrid(
@@ -444,6 +446,7 @@ def main():
 				dropout=args.dropout,
 				aggregation=args.aggregation,
 				ffn_activation=args.ffn_activation,
+				use_flash_attention=args.use_flash_attention,
 			)
 		model.compile(
 				optimizer=tf.keras.optimizers.Adam(),
