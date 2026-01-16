@@ -288,8 +288,6 @@ def parse_args():
 		p.add_argument('--use_jedi_hybrid', action='store_true', help='Use JEDI-PTv3 Hybrid (O(N) global interaction instead of attention)')
 		p.add_argument('--disable_cpe', action='store_true', help='Disable CPE in JEDI hybrid (for pure JEDI-style permutation invariance)')
 		p.add_argument("--ffn_activation", choices=["relu", "gelu", "swish", "silu", "tanh"], default="gelu", help="Activation function for feed-forward network (relu is fastest, gelu is default)")
-		p.add_argument("--cpe_type", choices=["original", "sinusoidal", "pairwise", "depthwise", "quantized"], default="original",
-			help="Type of CPE to use: original (scatter/gather), sinusoidal (fastest), pairwise (k-NN), depthwise (1D conv), quantized (fixed grid)")
 		p.add_argument("--jit_compile", action="store_true", help="Enable XLA JIT compilation for faster training (5-15%% speedup on modern GPUs)")
 		p.add_argument("--use_flash_attention", action="store_true", help="Enable Flash Attention for faster and more memory-efficient attention (requires TensorFlow 2.11+ and compatible GPU)")
 		return p.parse_args()

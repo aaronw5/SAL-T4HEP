@@ -1,20 +1,6 @@
 import tensorflow as tf
 from tensorflow.keras import layers, Model
 import math
-
-# Import efficient CPE variants
-try:
-    from models.EfficientCPE import (
-        SinusoidalGeometricCPE,
-        LightweightPairwiseCPE,
-        DepthwiseSeparableCPE,
-        QuantizedGridCPE
-    )
-    EFFICIENT_CPE_AVAILABLE = True
-except ImportError:
-    EFFICIENT_CPE_AVAILABLE = False
-    print("Warning: EfficientCPE module not found. Only original GeometricCPE available.")
-
 # Check for Flash Attention availability
 try:
     from tensorflow.keras.layers import MultiHeadAttention
@@ -23,7 +9,6 @@ try:
 except ImportError:
     FLASH_ATTENTION_AVAILABLE = False
     print("Warning: Flash Attention not available in this TensorFlow version.")
-
 
 # ========== Core Components ==========
 
@@ -374,24 +359,9 @@ class ChannelMixingLayer(layers.Layer):
 
 class PTv3Block(layers.Layer):
     """Transformer block with CPE."""
-    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, use_cpe=True, cpe_type='original', ffn_activation="gelu", use_flash_attention=False, **kwargs):
+    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, ffn_activation="gelu", **kwargs):
         super().__init__(**kwargs)
-        self.use_cpe = use_cpe
-
-        # CPE for geometry awareness (optional, with multiple variants)
-        if use_cpe:
-            if cpe_type == 'sinusoidal' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = SinusoidalGeometricCPE(d_model, num_freqs=cpe_k)
-            elif cpe_type == 'pairwise' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = LightweightPairwiseCPE(d_model, k_neighbors=cpe_k)
-            elif cpe_type == 'depthwise' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = DepthwiseSeparableCPE(d_model, kernel_size=cpe_k)
-            elif cpe_type == 'quantized' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = QuantizedGridCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
-            else:
-                # Default to original GeometricCPE
-                self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
-
+        self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
         self.attn = PatchedAttention(d_model, num_heads, patch_size, dropout=dropout, use_rpe=use_rpe, use_flash_attention=use_flash_attention)
         self.drop1 = layers.Dropout(dropout)
@@ -435,25 +405,14 @@ class JEDIPTv3Block(layers.Layer):
     This replaces O(N×P) patched attention with O(N) global interaction
     while maintaining geometric structure awareness.
     """
-    def __init__(self, d_model, d_ff, cpe_k=8, grid_size=0.05, dropout=0.0, use_cpe=True, cpe_type='original', **kwargs):
+    def __init__(self, d_model, d_ff, cpe_k=8, grid_size=0.05, dropout=0.0, use_cpe=True, **kwargs):
         super().__init__(**kwargs)
         self.d_model = d_model
         self.use_cpe = use_cpe
-        self.cpe_type = cpe_type
 
-        # CPE for geometry awareness (optional, with multiple variants)
+        # CPE for geometry awareness (optional)
         if use_cpe:
-            if cpe_type == 'sinusoidal' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = SinusoidalGeometricCPE(d_model, num_freqs=cpe_k)
-            elif cpe_type == 'pairwise' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = LightweightPairwiseCPE(d_model, k_neighbors=cpe_k)
-            elif cpe_type == 'depthwise' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = DepthwiseSeparableCPE(d_model, kernel_size=cpe_k)
-            elif cpe_type == 'quantized' and EFFICIENT_CPE_AVAILABLE:
-                self.cpe = QuantizedGridCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
-            else:
-                # Default to original GeometricCPE
-                self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
+            self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
 
         # JEDI-style global interaction (replaces attention)
         self.global_interaction = GlobalInteractionLayer(d_model)
@@ -553,38 +512,12 @@ def build_ptv3_jet_classifier(
     grid_size=0.05,
     use_rpe=False,
     use_pool=True,
-    use_cpe=True,
-    cpe_type='original',
     dropout=0.0,
     aggregation="max",
     ffn_activation="gelu",
-    use_flash_attention=False,
+    use_flash_attention=False
 ):
-    """
-    Build hierarchical PTv3-inspired jet classifier.
-
-    Args:
-        num_particles: Number of input particles
-        output_dim: Number of output classes
-        enc_dims: Feature dimensions for each stage
-        enc_layers: Number of transformer blocks per stage
-        enc_heads: Number of attention heads per stage
-        enc_patch_sizes: Patch sizes for attention per stage
-        enc_strides: Downsampling strides between stages
-        cpe_k: Kernel size for Geometric CPE (or num_freqs for sinusoidal)
-        grid_size: Grid resolution for CPE
-        use_rpe: Whether to use Relative Position Encoding
-        use_pool: Whether to use GeometricPooling between stages
-        use_cpe: Whether to use Convolutional Position Encoding
-        cpe_type: Type of CPE ('original', 'sinusoidal', 'pairwise', 'depthwise', 'quantized')
-        dropout: Dropout rate
-        aggregation: Global pooling method ('mean' or 'max')
-        ffn_activation: Activation function for FFN ('relu', 'gelu', etc.)
-        use_flash_attention: Whether to use Flash Attention (TensorFlow 2.11+ on compatible GPUs)
-
-    Returns:
-        Keras Model for jet classification
-    """
+    """Build hierarchical PTv3-inspired jet classifier."""
 
     # Input: [pt, eta, phi]
     features_input = layers.Input((num_particles, 3), name="features")
@@ -608,8 +541,6 @@ def build_ptv3_jet_classifier(
                 grid_size=grid_size,
                 dropout=dropout,
                 use_rpe=use_rpe,
-                use_cpe=use_cpe,
-                cpe_type=cpe_type,
                 ffn_activation=ffn_activation,
                 use_flash_attention=use_flash_attention,
             )([x, coords])
@@ -651,7 +582,6 @@ def build_jedi_ptv3_hybrid(
     grid_size=0.05,
     use_pool=True,
     use_cpe=True,
-    cpe_type='original',
     dropout=0.0,
     aggregation="max",
     ffn_activation="relu",
@@ -674,14 +604,12 @@ def build_jedi_ptv3_hybrid(
         enc_dims: Feature dimensions for each stage
         enc_layers: Number of transformer blocks per stage
         enc_strides: Downsampling strides between stages
-        cpe_k: Kernel size for Geometric CPE (or num_freqs for sinusoidal)
+        cpe_k: Kernel size for Geometric CPE
         grid_size: Grid resolution for CPE
         use_pool: Whether to use GeometricPooling between stages
         use_cpe: Whether to use Convolutional Position Encoding
-        cpe_type: Type of CPE ('original', 'sinusoidal', 'pairwise', 'depthwise', 'quantized')
         dropout: Dropout rate
         aggregation: Global pooling method ('mean' or 'max')
-        ffn_activation: Activation function for FFN ('relu', 'gelu', etc.)
 
     Returns:
         Keras Model for jet classification
@@ -707,7 +635,6 @@ def build_jedi_ptv3_hybrid(
                 grid_size=grid_size,
                 dropout=dropout,
                 use_cpe=use_cpe,
-                cpe_type=cpe_type,
             )([x, coords])
 
         # Downsample (except last stage)
