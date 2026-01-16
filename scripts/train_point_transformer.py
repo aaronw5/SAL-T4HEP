@@ -390,7 +390,6 @@ def main():
 		use_rpe = args.use_rpe or cfg["use_rpe"]
 
 		# build and compile model
-		logging.info("CPE type: %s, CPE enabled: %s", args.cpe_type, not args.disable_cpe)
 		logging.info("Flash Attention enabled: %s", args.use_flash_attention)
 		if args.use_jedi_hybrid:
 			logging.info("Building JEDI-PTv3 Hybrid model (O(N) global interaction)")
@@ -404,7 +403,6 @@ def main():
 				grid_size=args.grid_size,
 				use_pool=(not args.disable_pool),
 				use_cpe=(not args.disable_cpe),
-				cpe_type=args.cpe_type,
 				dropout=args.dropout,
 				aggregation=args.aggregation,
 				ffn_activation=args.ffn_activation,
@@ -439,7 +437,6 @@ def main():
 				grid_size=args.grid_size,
 				use_rpe=use_rpe,
 				use_cpe=(not args.disable_cpe),
-				cpe_type=args.cpe_type,
 				use_pool=(not args.disable_pool),
 				dropout=args.dropout,
 				aggregation=args.aggregation,
