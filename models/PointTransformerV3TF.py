@@ -511,6 +511,7 @@ def build_ptv3_jet_classifier(
     cpe_k=8,
     grid_size=0.05,
     use_rpe=False,
+    use_cpe=True,
     use_pool=True,
     dropout=0.0,
     aggregation="max",
@@ -541,6 +542,7 @@ def build_ptv3_jet_classifier(
                 grid_size=grid_size,
                 dropout=dropout,
                 use_rpe=use_rpe,
+                use_cpe=use_cpe,
                 ffn_activation=ffn_activation,
                 use_flash_attention=use_flash_attention,
             )([x, coords])
