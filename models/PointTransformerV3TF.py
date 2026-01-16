@@ -359,8 +359,9 @@ class ChannelMixingLayer(layers.Layer):
 
 class PTv3Block(layers.Layer):
     """Transformer block with CPE."""
-    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, ffn_activation="gelu", **kwargs):
+    def __init__(self, d_model, d_ff, num_heads, patch_size, cpe_k=8, grid_size=0.05, dropout=0.0, use_rpe=False, use_cpe=True, ffn_activation="gelu", use_flash_attention=False, **kwargs):
         super().__init__(**kwargs)
+        self.use_cpe = use_cpe
         self.cpe = GeometricCPE(d_model, kernel_size=cpe_k, grid_size=grid_size)
         self.norm1 = layers.LayerNormalization(epsilon=1e-6)
         self.attn = PatchedAttention(d_model, num_heads, patch_size, dropout=dropout, use_rpe=use_rpe, use_flash_attention=use_flash_attention)
