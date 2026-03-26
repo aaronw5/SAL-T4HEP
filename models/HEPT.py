@@ -181,9 +181,9 @@ class HEPTAttention(nn.Module):
     ) -> torch.Tensor:
         seq_len = query.shape[0]
         raw_size = max(int(raw_size), 1)
-        query = query[:raw_size].view(raw_size, self.num_heads, self.hidden_dim)
-        key = key[:raw_size].view(raw_size, self.num_heads, self.hidden_dim)
-        value = value[:raw_size].view(raw_size, self.num_heads, self.hidden_dim)
+        query = query[:raw_size].reshape(raw_size, self.num_heads, self.hidden_dim)
+        key = key[:raw_size].reshape(raw_size, self.num_heads, self.hidden_dim)
+        value = value[:raw_size].reshape(raw_size, self.num_heads, self.hidden_dim)
         coords = coords[:raw_size]
 
         padded_len = int(math.ceil(raw_size / self.block_size) * self.block_size)
@@ -201,7 +201,10 @@ class HEPTAttention(nn.Module):
             coords = torch.cat([coords, coords_pad], dim=0)
 
         region_indices, regions_h = self._build_region_indices(coords, regions)
-        coords[raw_size:] = 0.0
+        valid_token_mask = (
+            torch.arange(padded_len, device=coords.device) < raw_size
+        ).to(coords.dtype)
+        coords_for_attention = coords * valid_token_mask.unsqueeze(-1)
 
         w = w_rpe.weight.view(
             self.num_heads,
@@ -209,19 +212,21 @@ class HEPTAttention(nn.Module):
             coords.shape[-1] - 1,
             self.num_w_per_dist,
         )
-        q_hat, k_hat = prep_qk(query, key, w, coords)
+        q_hat, k_hat = prep_qk(query, key, w, coords_for_attention)
         q_hat = q_hat.permute(1, 0, 2).contiguous()
         k_hat = k_hat.permute(1, 0, 2).contiguous()
         value = value.permute(1, 0, 2).contiguous()
 
-        q_hat[:, raw_size:] = 0.0
-        k_hat[:, raw_size:] = 0.0
-        value[:, raw_size:] = 0.0
+        valid_head_mask = valid_token_mask.view(1, padded_len, 1)
+        q_hat = q_hat * valid_head_mask
+        k_hat = k_hat * valid_head_mask
+        value = value * valid_head_mask
 
         q_hashed, k_hashed, hash_shift = lsh_mapping(self.e2lsh, q_hat, k_hat)
         hash_shift = hash_shift.reshape(-1, hash_shift.shape[-1])
-        q_hashed[..., raw_size:] = float("inf")
-        k_hashed[..., raw_size:] = float("inf")
+        invalid_hash_mask = ~valid_token_mask.bool().view(1, 1, padded_len)
+        q_hashed = q_hashed.masked_fill(invalid_hash_mask, float("inf"))
+        k_hashed = k_hashed.masked_fill(invalid_hash_mask, float("inf"))
 
         q_shifts, k_shifts = get_geo_shift(regions_h, hash_shift, region_indices, self.n_hashes)
         q_hashed = q_hashed + q_shifts
@@ -242,9 +247,9 @@ class HEPTAttention(nn.Module):
         out = self.out_linear(out.permute(1, 0, 2).reshape(padded_len, self.num_heads * self.hidden_dim))
         out = out[:raw_size]
 
-        full_out = query.new_zeros(seq_len, self.hidden_dim)
-        full_out[:raw_size] = out
-        return full_out
+        if seq_len == raw_size:
+            return out
+        return F.pad(out, (0, 0, 0, seq_len - raw_size))
 
     def forward(
         self,
@@ -396,9 +401,7 @@ class HEPTClassifier(nn.Module):
         masked = x.masked_fill(~mask, torch.finfo(x.dtype).min)
         pooled = masked.max(dim=1).values
         empty_rows = ~mask.squeeze(-1).any(dim=1)
-        if empty_rows.any():
-            pooled[empty_rows] = 0.0
-        return pooled
+        return torch.where(empty_rows.unsqueeze(-1), torch.zeros_like(pooled), pooled)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor:
         mask = x[..., 0] > 0
