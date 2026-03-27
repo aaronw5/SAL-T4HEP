@@ -204,7 +204,12 @@ class HEPTAttention(nn.Module):
         valid_token_mask = (
             torch.arange(padded_len, device=coords.device) < raw_size
         ).to(coords.dtype)
-        coords_for_attention = coords * valid_token_mask.unsqueeze(-1)
+        # Avoid inf * 0 when padded coords are +inf; that product becomes NaN.
+        coords_for_attention = torch.where(
+            valid_token_mask.unsqueeze(-1).bool(),
+            coords,
+            torch.zeros_like(coords),
+        )
 
         w = w_rpe.weight.view(
             self.num_heads,

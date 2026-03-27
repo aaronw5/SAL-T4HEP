@@ -66,22 +66,39 @@ def train_one_epoch(
     criterion: nn.Module,
     optimizer: torch.optim.Optimizer,
     device: torch.device,
+    epoch_idx: int,
+    num_epochs: int,
+    log_interval: int,
 ) -> tuple[float, float]:
     model.train()
     total_loss = 0.0
     total_correct = 0
     total_examples = 0
-    for batch_x, batch_y in loader:
+    num_batches = len(loader)
+    for batch_idx, (batch_x, batch_y) in enumerate(loader, start=1):
         batch_x = batch_x.to(device)
         batch_y = batch_y.to(device)
         optimizer.zero_grad(set_to_none=True)
         logits = model(batch_x)
         loss = criterion(logits, batch_y)
+        if not torch.isfinite(loss):
+            raise RuntimeError(
+                f"Non-finite loss detected at epoch={epoch_idx + 1} batch={batch_idx}: {loss.item()}"
+            )
         loss.backward()
         optimizer.step()
         total_loss += loss.item() * batch_x.size(0)
         total_correct += (logits.argmax(dim=1) == batch_y).sum().item()
         total_examples += batch_x.size(0)
+        if batch_idx == 1 or batch_idx % max(1, log_interval) == 0 or batch_idx == num_batches:
+            running_loss = total_loss / total_examples
+            running_acc = total_correct / total_examples
+            print(
+                f"[Epoch {epoch_idx + 1:03d}/{num_epochs}] "
+                f"batch {batch_idx:04d}/{num_batches:04d} "
+                f"running_loss={running_loss:.5f} running_acc={running_acc:.4f}",
+                flush=True,
+            )
     return total_loss / total_examples, total_correct / total_examples
 
 
@@ -130,6 +147,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--aggregation", choices=["max", "mean"], default="max")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--num_workers", type=int, default=0)
+    parser.add_argument(
+        "--log_interval",
+        type=int,
+        default=20,
+        help="Print running train metrics every N batches",
+    )
     return parser.parse_args()
 
 
@@ -165,6 +188,16 @@ def main() -> None:
 
     x = np.load(os.path.join(args.data_dir, f"x_train_robust_{args.num_particles}const_ptetaphi.npy"))
     y = np.load(os.path.join(args.data_dir, f"y_train_robust_{args.num_particles}const_ptetaphi.npy"))
+    non_finite_x = np.size(x) - np.isfinite(x).sum()
+    non_finite_y = np.size(y) - np.isfinite(y).sum()
+    if non_finite_x or non_finite_y:
+        logging.warning(
+            "Detected non-finite values in dataset: x=%d y=%d. Replacing with finite values.",
+            int(non_finite_x),
+            int(non_finite_y),
+        )
+        x = np.nan_to_num(x, nan=0.0, posinf=0.0, neginf=0.0)
+        y = np.nan_to_num(y, nan=0.0, posinf=0.0, neginf=0.0)
     x_train, x_val, y_train, y_val = train_test_split(
         x, y, test_size=args.val_split, random_state=args.seed
     )
@@ -249,7 +282,16 @@ def main() -> None:
 
     for epoch in range(args.num_epochs):
         epoch_start = time.time()
-        train_loss, train_acc = train_one_epoch(model, train_loader, criterion, optimizer, device)
+        train_loss, train_acc = train_one_epoch(
+            model,
+            train_loader,
+            criterion,
+            optimizer,
+            device,
+            epoch_idx=epoch,
+            num_epochs=args.num_epochs,
+            log_interval=args.log_interval,
+        )
         val_loss, val_acc = evaluate(model, val_loader, criterion, device)
         scheduler.step(val_loss)
 
