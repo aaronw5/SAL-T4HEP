@@ -16,6 +16,7 @@ import matplotlib
 import numpy as np
 import torch
 import torch.nn as nn
+from sklearn.metrics import roc_curve
 from sklearn.model_selection import train_test_split
 from torch.utils.data import DataLoader, TensorDataset
 
@@ -124,6 +125,48 @@ def evaluate(
     return total_loss / total_examples, total_correct / total_examples
 
 
+@torch.no_grad()
+def evaluate_test_metrics(
+    model: nn.Module,
+    x_test: np.ndarray,
+    y_test: np.ndarray,
+    device: torch.device,
+    batch_size: int,
+) -> tuple[float, float]:
+    model.eval()
+    x_tensor = torch.tensor(x_test, dtype=torch.float32)
+    probs = []
+    for start in range(0, len(x_tensor), batch_size):
+        batch_x = x_tensor[start : start + batch_size].to(device)
+        logits = model(batch_x)
+        probs.append(torch.softmax(logits, dim=1).cpu().numpy())
+    preds = np.vstack(probs)
+
+    y_true_idx = np.argmax(y_test, axis=1)
+    y_pred_idx = np.argmax(preds, axis=1)
+    acc = float((y_true_idx == y_pred_idx).mean())
+
+    rejections = []
+    for class_index in range(2, len(CLASS_LABELS)):
+        mask = (
+            (y_test[:, 0] == 1)
+            | (y_test[:, 1] == 1)
+            | (y_test[:, class_index] == 1)
+        )
+        binary_y = (y_test[mask, class_index] == 1).astype(int)
+        binary_score = preds[mask, class_index]
+        try:
+            fpr_vals, tpr_vals, _ = roc_curve(binary_y, binary_score)
+        except ValueError:
+            continue
+        idx = np.argmin(np.abs(tpr_vals - 0.8))
+        rejection = 1.0 / fpr_vals[idx] if fpr_vals[idx] > 0 else np.inf
+        rejections.append(rejection)
+
+    avg_bkg_rej = float(np.nanmean(rejections)) if rejections else float("nan")
+    return acc, avg_bkg_rej
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train HEPT on hls4ml jet tagging")
     parser.add_argument("--data_dir", required=True, help="Directory containing hls4ml .npy files")
@@ -211,6 +254,13 @@ def main() -> None:
 
     x_train = apply_sorting(x_train, args.sort_by)
     x_val = apply_sorting(x_val, args.sort_by)
+    x_test = np.load(
+        os.path.join(args.data_dir, f"x_val_robust_{args.num_particles}const_ptetaphi.npy")
+    )
+    y_test = np.load(
+        os.path.join(args.data_dir, f"y_val_robust_{args.num_particles}const_ptetaphi.npy")
+    )
+    x_test = apply_sorting(x_test, args.sort_by)
     y_train_idx = one_hot_to_index(y_train)
     y_val_idx = one_hot_to_index(y_val)
 
@@ -221,21 +271,6 @@ def main() -> None:
     val_dataset = TensorDataset(
         torch.tensor(x_val, dtype=torch.float32),
         torch.tensor(y_val_idx, dtype=torch.long),
-    )
-
-    train_loader = DataLoader(
-        train_dataset,
-        batch_size=args.batch_size,
-        shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available(),
-    )
-    val_loader = DataLoader(
-        val_dataset,
-        batch_size=args.batch_size,
-        shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available(),
     )
 
     model = HEPTClassifier(
@@ -279,75 +314,141 @@ def main() -> None:
     best_val_loss = float("inf")
     best_epoch = -1
     best_state = None
+    schedule = [
+        (128, 200),
+        (256, 200),
+        (512, 200),
+        (1024, 200),
+        (2048, 200),
+        (4096, 400),
+    ]
+    logging.info("Using staged batch-size schedule: %s", schedule)
+    total_epochs = sum(stage_epochs for _, stage_epochs in schedule)
+    epoch = 0
 
-    for epoch in range(args.num_epochs):
-        epoch_start = time.time()
-        train_loss, train_acc = train_one_epoch(
-            model,
-            train_loader,
-            criterion,
-            optimizer,
-            device,
-            epoch_idx=epoch,
-            num_epochs=args.num_epochs,
-            log_interval=args.log_interval,
+    for stage_idx, (stage_bs, stage_epochs) in enumerate(schedule, start=1):
+        train_loader = DataLoader(
+            train_dataset,
+            batch_size=stage_bs,
+            shuffle=True,
+            num_workers=args.num_workers,
+            pin_memory=torch.cuda.is_available(),
         )
-        val_loss, val_acc = evaluate(model, val_loader, criterion, device)
-        scheduler.step(val_loss)
+        val_loader = DataLoader(
+            val_dataset,
+            batch_size=stage_bs,
+            shuffle=False,
+            num_workers=args.num_workers,
+            pin_memory=torch.cuda.is_available(),
+        )
+        for group in optimizer.param_groups:
+            group["lr"] = args.learning_rate
 
-        train_loss_hist.append(train_loss)
-        val_loss_hist.append(val_loss)
-        train_acc_hist.append(train_acc)
-        val_acc_hist.append(val_acc)
-
-        elapsed = time.time() - epoch_start
-        current_lr = optimizer.param_groups[0]["lr"]
         logging.info(
-            "Epoch %03d train_loss=%.5f train_acc=%.4f val_loss=%.5f val_acc=%.4f lr=%.3e time=%.2fs",
-            epoch + 1,
-            train_loss,
-            train_acc,
-            val_loss,
-            val_acc,
-            current_lr,
-            elapsed,
+            "Starting stage %d/%d: batch_size=%d epochs=%d",
+            stage_idx,
+            len(schedule),
+            stage_bs,
+            stage_epochs,
         )
-        print(
-            f"Epoch {epoch + 1:03d}/{args.num_epochs} "
-            f"train_loss={train_loss:.5f} val_loss={val_loss:.5f} "
-            f"train_acc={train_acc:.4f} val_acc={val_acc:.4f}"
-        )
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_epoch = epoch
-            best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
-            torch.save(
-                {
-                    "model_state_dict": best_state,
-                    "model_config": {
-                        "num_particles": args.num_particles,
-                        "feature_dim": x_train.shape[2],
-                        "hidden_dim": args.hidden_dim,
-                        "num_heads": args.num_heads,
-                        "num_layers": args.num_layers,
-                        "output_dim": len(CLASS_LABELS),
-                        "block_size": args.block_size,
-                        "n_hashes": args.n_hashes,
-                        "num_regions": args.num_regions,
-                        "num_w_per_dist": args.num_w_per_dist,
-                        "dropout": args.dropout,
-                        "aggregation": args.aggregation,
-                    },
-                    "sort_by": args.sort_by,
-                    "class_labels": CLASS_LABELS,
-                    "best_epoch": epoch + 1,
-                },
-                os.path.join(save_dir, "best_model.pt"),
+        stage_best_val = float("inf")
+        stage_no_improve = 0
+        for _ in range(stage_epochs):
+            epoch_start = time.time()
+            train_loss, train_acc = train_one_epoch(
+                model,
+                train_loader,
+                criterion,
+                optimizer,
+                device,
+                epoch_idx=epoch,
+                num_epochs=total_epochs,
+                log_interval=args.log_interval,
             )
-        elif epoch - best_epoch >= args.patience:
-            logging.info("Early stopping triggered at epoch %d", epoch + 1)
-            break
+            val_loss, val_acc = evaluate(model, val_loader, criterion, device)
+            scheduler.step(val_loss)
+
+            train_loss_hist.append(train_loss)
+            val_loss_hist.append(val_loss)
+            train_acc_hist.append(train_acc)
+            val_acc_hist.append(val_acc)
+
+            elapsed = time.time() - epoch_start
+            current_lr = optimizer.param_groups[0]["lr"]
+            logging.info(
+                "Epoch %03d train_loss=%.5f train_acc=%.4f val_loss=%.5f val_acc=%.4f lr=%.3e time=%.2fs",
+                epoch + 1,
+                train_loss,
+                train_acc,
+                val_loss,
+                val_acc,
+                current_lr,
+                elapsed,
+            )
+            print(
+                f"Epoch {epoch + 1:03d}/{total_epochs} "
+                f"train_loss={train_loss:.5f} val_loss={val_loss:.5f} "
+                f"train_acc={train_acc:.4f} val_acc={val_acc:.4f}"
+            )
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_epoch = epoch
+                best_state = {k: v.detach().cpu() for k, v in model.state_dict().items()}
+                torch.save(
+                    {
+                        "model_state_dict": best_state,
+                        "model_config": {
+                            "num_particles": args.num_particles,
+                            "feature_dim": x_train.shape[2],
+                            "hidden_dim": args.hidden_dim,
+                            "num_heads": args.num_heads,
+                            "num_layers": args.num_layers,
+                            "output_dim": len(CLASS_LABELS),
+                            "block_size": args.block_size,
+                            "n_hashes": args.n_hashes,
+                            "num_regions": args.num_regions,
+                            "num_w_per_dist": args.num_w_per_dist,
+                            "dropout": args.dropout,
+                            "aggregation": args.aggregation,
+                        },
+                        "sort_by": args.sort_by,
+                        "class_labels": CLASS_LABELS,
+                        "best_epoch": epoch + 1,
+                    },
+                    os.path.join(save_dir, "best_model.pt"),
+                )
+
+            if val_loss < stage_best_val:
+                stage_best_val = val_loss
+                stage_no_improve = 0
+            else:
+                stage_no_improve += 1
+                if stage_no_improve >= args.patience:
+                    logging.info(
+                        "Early stopping within stage %d after %d stale epochs",
+                        stage_idx,
+                        stage_no_improve,
+                    )
+                    epoch += 1
+                    break
+            epoch += 1
+
+        test_acc, test_bkg_rej = evaluate_test_metrics(
+            model=model,
+            x_test=x_test,
+            y_test=y_test,
+            device=device,
+            batch_size=stage_bs,
+        )
+        logging.info(
+            "Post-stage test metrics | stage=%d/%d batch_size=%d test_acc=%.4f test_avg_bg_rej@0.8=%.3f",
+            stage_idx,
+            len(schedule),
+            stage_bs,
+            test_acc,
+            test_bkg_rej,
+        )
 
     if best_state is not None:
         model.load_state_dict(best_state)
